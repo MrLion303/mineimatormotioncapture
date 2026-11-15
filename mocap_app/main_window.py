@@ -30,8 +30,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mine-imator Motion Capture")
-        self.setMinimumSize(1080, 700)
-        self.resize(1240, 780)
+        self.setMinimumSize(1080, 760)
+        self.resize(1320, 900)
 
         self.camera_worker: CameraWorker | None = None
         self.camera_ready = False
@@ -326,24 +326,6 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 15, 16, 15)
         layout.setSpacing(11)
-        heading = QLabel(title)
-        heading.setObjectName("sectionTitle")
-        layout.addWidget(heading)
-        return panel
-
-    @staticmethod
-    def _field_label(text: str) -> QLabel:
-        label = QLabel(text)
-        label.setObjectName("fieldLabel")
-        return label
-
-    @staticmethod
-    def _panel(title: str) -> QFrame:
-        panel = QFrame()
-        panel.setObjectName("panel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
         heading = QLabel(title)
         heading.setObjectName("sectionTitle")
         layout.addWidget(heading)
