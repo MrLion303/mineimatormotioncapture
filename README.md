@@ -5,7 +5,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 ## Qué incluye esta primera versión
 
 - Vista previa de webcam con el esqueleto detectado superpuesto.
-- Cuenta regresiva de **3 segundos** cada vez que se pulsa **Grabar**.
+- Cuenta regresiva de **3 segundos** al pulsar **Grabar**.
 - Duración configurable antes de grabar, de 1 a 300 segundos.
 - Inicio automático al terminar la cuenta regresiva y parada automática al cumplirse la duración.
 - Parada manual y cancelación de la cuenta regresiva.
@@ -13,7 +13,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - Retargeting inicial de torso, cabeza, brazos y piernas.
 - Suavizado opcional e interpolación al FPS de salida.
 - Reducción opcional de keyframes para evitar archivos innecesariamente densos.
-- Exportación a un nuevo archivo \`.miobject\` a partir de una plantilla humana seleccionada.
+- Exportación a un nuevo archivo **.miobject** a partir de una plantilla humana seleccionada.
 - Conservación de los identificadores, el modelo, las partes y la jerarquía de la plantilla.
 
 ## Requisitos
@@ -22,24 +22,24 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - Python 3.11 para ejecutar desde el código.
 - Webcam funcional.
 - Conexión a Internet la primera vez para descargar el modelo Pose Landmarker.
-- Un archivo humano \`.miobject\` de Mine-imator que incluya las pistas \`body\`, \`head\`, \`left_arm\`, \`right_arm\`, \`left_leg\` y \`right_leg\`.
+- Un archivo humano **.miobject** de Mine-imator que incluya las pistas **body**, **head**, **left_arm**, **right_arm**, **left_leg** y **right_leg**.
 
 ## Ejecutar desde código
 
 Abre PowerShell en la carpeta del repositorio:
 
-\`\`\`powershell
+~~~powershell
 py -3.11 -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python main.py
-\`\`\`
+~~~
 
 ## Flujo de uso
 
 1. Conecta la webcam y espera a que aparezca el esqueleto en la vista previa.
-2. Selecciona tu archivo humano \`.miobject\` como plantilla.
+2. Selecciona tu archivo humano **.miobject** como plantilla.
 3. Define la duración y los FPS de exportación.
 4. Colócate de cuerpo completo en el encuadre. Mantén una postura inicial cómoda durante la cuenta regresiva: la primera pose detectada sirve como referencia neutra.
 5. Pulsa **Grabar**. Se mostrará 3, 2, 1 y la captura comenzará al cumplirse los tres segundos.
@@ -48,17 +48,17 @@ python main.py
 
 ## Construcción para Windows
 
-El workflow **Compilar Windows** se ejecuta en cada actualización de \`main\` y también puede iniciarse manualmente desde GitHub Actions. Primero ejecuta las pruebas y después compila la aplicación con PyInstaller. El ZIP se publica como artifact descargable de Actions durante 14 días; no se crea un GitHub Release.
+El workflow **Compilar Windows** se ejecuta en cada actualización de **main** y también puede iniciarse manualmente desde GitHub Actions. Primero ejecuta las pruebas y después compila la aplicación con PyInstaller. El ZIP se publica como artifact descargable de Actions durante 14 días; no se crea un GitHub Release.
 
 ## Estructura
 
-- \`main.py\`: entrada de la aplicación.
-- \`mocap_app/camera.py\`: webcam, modelo y seguimiento corporal.
-- \`mocap_app/retarget.py\`: conversión de landmarks a controles del personaje.
-- \`mocap_app/miobject.py\`: validación de plantillas y escritura de archivos Mine-imator.
-- \`mocap_app/main_window.py\`: interfaz, cuenta regresiva y control de grabación.
-- \`tests/\`: pruebas del retargeting y del exportador.
-- \`.github/workflows/compilar-windows.yml\`: pruebas y compilación para Windows.
+- **main.py**: entrada de la aplicación.
+- **mocap_app/camera.py**: webcam, modelo y seguimiento corporal.
+- **mocap_app/retarget.py**: conversión de landmarks a controles del personaje.
+- **mocap_app/miobject.py**: validación de plantillas y escritura de archivos Mine-imator.
+- **mocap_app/main_window.py**: interfaz, cuenta regresiva y control de grabación.
+- **tests/**: pruebas del retargeting y del exportador.
+- **.github/workflows/compilar-windows.yml**: pruebas y compilación para Windows.
 
 ## Precisión y límites conocidos
 
