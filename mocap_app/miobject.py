@@ -73,6 +73,15 @@ def _unwrap_degrees(values: list[float]) -> list[float]:
     return output
 
 
+def _relative_degrees(value: float, reference: float) -> float:
+    delta = value - reference
+    while delta > 180.0:
+        delta -= 360.0
+    while delta < -180.0:
+        delta += 360.0
+    return delta
+
+
 def _interpolate(times: list[float], values: list[float], target: float) -> float:
     if len(times) == 1 or target <= times[0]:
         return values[0]
@@ -151,6 +160,25 @@ def export_miobject(
     for timestamp, controls in converted:
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
+    source_times = [item[0] for item in converted]
+
+    # Treat the first valid captured pose as the neutral reference pose.
+    references: dict[str, dict[str, float]] = {}
+    for _, controls in converted:
+        for part, values in controls.items():
+            if part not in references:
+                references[part] = dict(values)
+    normalized = []
+    for timestamp, controls in converted:
+        relative = {}
+        for part, values in controls.items():
+            reference = references.get(part, {})
+            relative[part] = {
+                field: _relative_degrees(value, reference.get(field, value))
+                for field, value in values.items()
+            }
+        normalized.append((timestamp, relative))
+    converted = normalized
     source_times = [item[0] for item in converted]
 
     if duration_seconds is None:
