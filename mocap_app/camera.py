@@ -172,8 +172,8 @@ class CameraWorker(QThread):
                                     float(point.x),
                                     float(point.y),
                                     float(point.z),
-                                    float(getattr(point, "visibility", 1.0)),
-                                    float(getattr(point, "presence", 1.0)),
+                                    float(getattr(point, "visibility", None) or 1.0),
+                                    float(getattr(point, "presence", None) or 1.0),
                                 ]
                                 for point in world_landmarks
                             ],

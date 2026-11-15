@@ -90,8 +90,11 @@ def test_arm_motion_is_relative_to_body_and_keeps_rest_offset():
     baseline = {"left_arm": {"ROT_Y": 120.0, "BEND_ANGLE_X": 10.0}}
     controls = calculate_pose_controls(moved, base, baseline)
     assert "left_arm" in controls
-    assert abs(controls["left_arm"]["ROT_Y"] - 120.0) < 35.0
-    assert abs(controls["left_arm"]["ROT_Y"] - 120.0) > 0.1
+    assert abs(controls["left_arm"]["ROT_Y"] - 120.0) < 0.1
+    assert (
+        abs(controls["left_arm"]["ROT_X"]) > 0.1
+        or abs(controls["left_arm"]["ROT_Z"]) > 0.1
+    )
 
 
 def test_slow_subtle_motion_keeps_keyframes():

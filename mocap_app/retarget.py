@@ -272,10 +272,17 @@ def _apply_rotation_delta(
     part: str,
     delta: Quaternion,
 ) -> dict[str, float]:
-    base_q = _quaternion_from_euler_xyz(_base_rotation(base_values, part))
-    result_q = _quaternion_multiply(base_q, delta)
-    x, y, z = _quaternion_to_euler_xyz(result_q)
-    return {"ROT_X": x, "ROT_Y": y, "ROT_Z": z}
+    # Mine-imator's human limbs carry baked-in rest angles (for example,
+    # left arm ROT_Y around +120 degrees and right arm around -60 degrees).
+    # Add local motion offsets to those values instead of composing a world
+    # quaternion with the baked Euler pose, which can create Euler flips.
+    base_x, base_y, base_z = _base_rotation(base_values, part)
+    delta_x, delta_y, delta_z = _quaternion_to_euler_xyz(delta)
+    return {
+        "ROT_X": base_x + delta_x,
+        "ROT_Y": base_y + delta_y,
+        "ROT_Z": base_z + delta_z,
+    }
 
 
 def _bend_angle(start: Vector, joint: Vector, end: Vector) -> float:
