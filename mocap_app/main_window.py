@@ -437,7 +437,8 @@ class MainWindow(QMainWindow):
         self.camera_ready = False
         if worker is not None:
             worker.stop()
-            worker.wait(4000)
+            # Wait until the capture thread releases the camera/model before deleting it.
+            worker.wait()
             worker.deleteLater()
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
@@ -564,6 +565,7 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
         self.record_button.setEnabled(self.camera_ready)
+        self._update_actions()
 
     def _load_template(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
