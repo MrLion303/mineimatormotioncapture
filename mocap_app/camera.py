@@ -10,10 +10,24 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
 
-MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-)
+MODEL_VARIANTS = {
+    "full": {
+        "label": "Full",
+        "url": (
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+            "pose_landmarker_full/float16/1/pose_landmarker_full.task"
+        ),
+        "filename": "pose_landmarker_full.task",
+    },
+    "lite": {
+        "label": "Lite",
+        "url": (
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+            "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+        ),
+        "filename": "pose_landmarker_lite.task",
+    },
+}
 
 POSE_CONNECTIONS = (
     (0, 1), (1, 2), (2, 3), (3, 7),
@@ -28,24 +42,32 @@ POSE_CONNECTIONS = (
 )
 
 
-def default_model_path() -> Path:
+def default_model_path(variant: str = "full") -> Path:
+    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS["full"])
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", Path.home()))
     else:
         root = Path.home() / ".local" / "share"
-    return root / "NegativeStudios" / "MineimatorMotionCapture" / "models" / "pose_landmarker_lite.task"
+    return (
+        root
+        / "NegativeStudios"
+        / "MineimatorMotionCapture"
+        / "models"
+        / model["filename"]
+    )
 
 
-def _download_model(target: Path, status_callback) -> None:
+def _download_model(target: Path, variant: str, status_callback) -> None:
+    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS["full"])
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".download")
     request = urllib.request.Request(
-        MODEL_URL,
-        headers={"User-Agent": "MineimatorMotionCapture/0.1"},
+        model["url"],
+        headers={"User-Agent": "MineimatorMotionCapture/0.2"},
     )
-    status_callback("Descargando el modelo de seguimiento corporal...")
+    status_callback(f"Descargando el modelo {model['label']} de seguimiento corporal...")
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             with temporary.open("wb") as output:
                 while True:
                     chunk = response.read(1024 * 1024)
@@ -67,9 +89,10 @@ class CameraWorker(QThread):
     ready = Signal()
     failed = Signal(str)
 
-    def __init__(self, camera_index: int, parent=None):
+    def __init__(self, camera_index: int, model_variant: str = "full", parent=None):
         super().__init__(parent)
         self.camera_index = camera_index
+        self.model_variant = model_variant if model_variant in MODEL_VARIANTS else "full"
         self._running = True
 
     def stop(self) -> None:
@@ -93,11 +116,13 @@ class CameraWorker(QThread):
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             camera.set(cv2.CAP_PROP_FPS, 30)
 
-            model_path = default_model_path()
+            model_path = default_model_path(self.model_variant)
             if not model_path.exists():
-                _download_model(model_path, self.status.emit)
+                _download_model(model_path, self.model_variant, self.status.emit)
 
-            self.status.emit("Preparando detector de cuerpo...")
+            self.status.emit(
+                f"Preparando detector de cuerpo ({MODEL_VARIANTS[self.model_variant]['label']})..."
+            )
             import mediapipe as mp
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
@@ -148,6 +173,7 @@ class CameraWorker(QThread):
                                     float(point.y),
                                     float(point.z),
                                     float(getattr(point, "visibility", 1.0)),
+                                    float(getattr(point, "presence", 1.0)),
                                 ]
                                 for point in world_landmarks
                             ],
@@ -157,6 +183,7 @@ class CameraWorker(QThread):
                                     float(point.y),
                                     float(point.z),
                                     float(getattr(point, "visibility", 1.0)),
+                                    float(getattr(point, "presence", 1.0)),
                                 ]
                                 for point in image_landmarks
                             ],

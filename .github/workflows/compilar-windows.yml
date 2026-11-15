@@ -43,14 +43,10 @@ jobs:
           --collect-all PySide6
           main.py
 
-      - name: Empaquetar aplicación
-        shell: pwsh
-        run: Compress-Archive -Path dist/MineimatorMotionCapture/* -DestinationPath MineimatorMotionCapture-Windows.zip -Force
-
-      - name: Publicar compilación descargable
+      - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
         with:
           name: MineimatorMotionCapture-Windows
-          path: MineimatorMotionCapture-Windows.zip
+          path: dist/MineimatorMotionCapture/
           if-no-files-found: error
           retention-days: 14

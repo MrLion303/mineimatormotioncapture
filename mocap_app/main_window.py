@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         heading.addWidget(subtitle)
         header.addLayout(heading)
         header.addStretch()
-        version = QLabel("PREVIEW 0.1.0")
+        version = QLabel("PREVIEW 0.2.0")
         version.setObjectName("version")
         header.addWidget(version, alignment=Qt.AlignmentFlag.AlignTop)
         page.addLayout(header)
@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
 
         info = QLabel(
             "Consejo: mantén la cabeza, las manos y los pies dentro del encuadre. "
-            "La primera pose detectada se utiliza como referencia inicial."
+            "La primera pose estable se utiliza como referencia inicial."
         )
         info.setObjectName("hint")
         info.setWordWrap(True)
@@ -159,6 +159,13 @@ class MainWindow(QMainWindow):
             self.camera_combo.addItem(f"Cámara {index}", index)
         capture_layout.addWidget(self.camera_combo)
 
+        capture_layout.addWidget(self._field_label("Calidad del seguimiento"))
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItem("Full · más preciso", "full")
+        self.quality_combo.addItem("Lite · más rápido", "lite")
+        self.quality_combo.setCurrentIndex(0)
+        capture_layout.addWidget(self.quality_combo)
+
         capture_layout.addWidget(self._field_label("Duración de grabación"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
@@ -173,7 +180,7 @@ class MainWindow(QMainWindow):
         self.fps_spin.setSuffix(" FPS")
         capture_layout.addWidget(self.fps_spin)
 
-        self.smooth_check = QCheckBox("Suavizar movimiento")
+        self.smooth_check = QCheckBox("Estabilizar movimiento sin perder gestos suaves")
         self.smooth_check.setChecked(True)
         capture_layout.addWidget(self.smooth_check)
 
@@ -218,8 +225,9 @@ class MainWindow(QMainWindow):
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "La profundidad de una webcam es estimada por el modelo. "
-            "Para movimientos más precisos, usa buena iluminación y evita tapar las articulaciones."
+            "Full ofrece un seguimiento más detallado; Lite consume menos recursos. "
+            "La profundidad de una webcam sigue siendo estimada, por lo que una buena "
+            "iluminación y no ocultar las articulaciones mejora el resultado."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
@@ -389,7 +397,8 @@ class MainWindow(QMainWindow):
             return
 
         camera_index = int(self.camera_combo.currentData())
-        worker = CameraWorker(camera_index, self)
+        model_variant = str(self.quality_combo.currentData())
+        worker = CameraWorker(camera_index, model_variant, self)
         self.camera_worker = worker
         worker.frame_ready.connect(self._show_frame)
         worker.pose_ready.connect(self._receive_pose)
@@ -401,6 +410,7 @@ class MainWindow(QMainWindow):
         self.camera_button.setText("Conectando...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
+        self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTANDO")
         worker.start()
 
@@ -408,6 +418,8 @@ class MainWindow(QMainWindow):
         self.camera_ready = True
         self.camera_button.setText("Desconectar cámara")
         self.camera_button.setEnabled(True)
+        self.camera_combo.setEnabled(False)
+        self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTADA")
         self._update_actions()
 
@@ -423,6 +435,7 @@ class MainWindow(QMainWindow):
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(True)
+        self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self.record_button.setEnabled(False)
         if self.state != "idle":
@@ -437,12 +450,12 @@ class MainWindow(QMainWindow):
         self.camera_ready = False
         if worker is not None:
             worker.stop()
-            # Wait until the capture thread releases the camera/model before deleting it.
             worker.wait()
             worker.deleteLater()
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(True)
+        self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self._update_actions()
         self._set_status("Cámara desconectada.")
@@ -486,6 +499,7 @@ class MainWindow(QMainWindow):
         self.duration_spin.setEnabled(False)
         self.fps_spin.setEnabled(False)
         self.camera_combo.setEnabled(False)
+        self.quality_combo.setEnabled(False)
         self.record_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.overlay.setText("3")
@@ -562,6 +576,7 @@ class MainWindow(QMainWindow):
         self.duration_spin.setEnabled(True)
         self.fps_spin.setEnabled(True)
         self.camera_combo.setEnabled(self.camera_worker is None)
+        self.quality_combo.setEnabled(self.camera_worker is None)
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
         self.record_button.setEnabled(self.camera_ready)

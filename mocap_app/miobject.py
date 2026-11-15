@@ -5,7 +5,7 @@ from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Iterable
 
-from .retarget import calculate_pose_controls
+from .retarget import calculate_pose_controls, stabilize_pose_samples
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
@@ -17,6 +17,9 @@ PART_FIELDS = {
     "left_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
 }
+
+KEYFRAME_ANGLE_THRESHOLD = 0.18
+MAX_KEYFRAME_INTERVAL_SECONDS = 0.10
 
 
 class MiobjectError(ValueError):
@@ -59,6 +62,52 @@ def validate_template(data: dict[str, Any]) -> None:
         raise MiobjectError(f"Faltan pistas corporales necesarias en la plantilla: {names}")
 
 
+def _first_keyframe_values(timeline: dict[str, Any]) -> dict[str, float]:
+    keyframes = timeline.get("keyframes")
+    if not isinstance(keyframes, dict) or not keyframes:
+        return {}
+    try:
+        first_frame = min(keyframes, key=lambda frame: float(frame))
+    except (TypeError, ValueError):
+        first_frame = next(iter(keyframes))
+    values = keyframes.get(first_frame, {})
+    if not isinstance(values, dict):
+        return {}
+    return {
+        str(key): float(value)
+        for key, value in values.items()
+        if isinstance(value, (int, float))
+    }
+
+
+def _template_baselines(data: dict[str, Any]) -> dict[str, dict[str, float]]:
+    baselines: dict[str, dict[str, float]] = {}
+    for timeline in data.get("timelines", []):
+        if not isinstance(timeline, dict) or timeline.get("type") != "bodypart":
+            continue
+        part = timeline.get("model_part_name")
+        if part not in PART_FIELDS:
+            continue
+
+        defaults = timeline.get("default_values")
+        baseline = {
+            str(key): float(value)
+            for key, value in (defaults.items() if isinstance(defaults, dict) else [])
+            if isinstance(value, (int, float))
+        }
+        baseline.update(_first_keyframe_values(timeline))
+        baselines[part] = {
+            field: float(baseline.get(field, 0.0))
+            for field in PART_FIELDS[part]
+        }
+    return baselines
+
+
+def _static_first_keyframe(timeline: dict[str, Any]) -> None:
+    values = _first_keyframe_values(timeline)
+    timeline["keyframes"] = {"0": values} if values else {}
+
+
 def _unwrap_degrees(values: list[float]) -> list[float]:
     if not values:
         return values
@@ -71,15 +120,6 @@ def _unwrap_degrees(values: list[float]) -> list[float]:
             adjusted += 360.0
         output.append(adjusted)
     return output
-
-
-def _relative_degrees(value: float, reference: float) -> float:
-    delta = value - reference
-    while delta > 180.0:
-        delta -= 360.0
-    while delta < -180.0:
-        delta += 360.0
-    return delta
 
 
 def _interpolate(times: list[float], values: list[float], target: float) -> float:
@@ -99,7 +139,9 @@ def _interpolate(times: list[float], values: list[float], target: float) -> floa
 def _smooth(values: list[float], enabled: bool) -> list[float]:
     if not enabled or len(values) < 3:
         return values
-    alpha = 0.38
+    # Landmark filtering already removes most jitter. Keep this angle pass light
+    # so slow, small movements are not swallowed by an overly strong low-pass.
+    alpha = 0.78
     output = [values[0]]
     for value in values[1:]:
         output.append(output[-1] + alpha * (value - output[-1]))
@@ -117,8 +159,7 @@ def _select_keyframes(
     if not optimize:
         return list(range(len(frame_values)))
 
-    threshold = 1.0
-    max_gap = max(2, round(fps * 0.20))
+    max_gap = max(2, round(fps * MAX_KEYFRAME_INTERVAL_SECONDS))
     selected = [0]
     previous = 0
     for index in range(1, len(frame_values) - 1):
@@ -126,12 +167,21 @@ def _select_keyframes(
             abs(frame_values[index][field] - frame_values[previous][field])
             for field in fields
         )
-        if difference >= threshold or index - previous >= max_gap:
+        if difference >= KEYFRAME_ANGLE_THRESHOLD or index - previous >= max_gap:
             selected.append(index)
             previous = index
     if selected[-1] != len(frame_values) - 1:
         selected.append(len(frame_values) - 1)
     return selected
+
+
+def _reference_pose(samples: list[tuple[float, dict[str, Any]]]) -> dict[str, Any]:
+    fallback = samples[0][1]
+    for _, pose in samples:
+        controls = calculate_pose_controls(pose, pose)
+        if REQUIRED_PARTS.issubset(controls):
+            return pose
+    return fallback
 
 
 def export_miobject(
@@ -147,38 +197,32 @@ def export_miobject(
         raise MiobjectError("Los FPS de salida deben estar entre 12 y 60.")
 
     data = load_template(template_path)
+    stabilized = stabilize_pose_samples(samples, enabled=smooth_motion)
+    if not stabilized:
+        raise MiobjectError("No hay muestras de pose para exportar.")
+
+    reference_pose = _reference_pose(stabilized)
+    baselines = _template_baselines(data)
+
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
-    for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose)
+    for timestamp, pose in stabilized:
+        controls = calculate_pose_controls(
+            pose,
+            reference_pose=reference_pose,
+            base_values=baselines,
+        )
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
     if not converted:
-        raise MiobjectError("No hay poses válidas para exportar. Revisa que se vea el cuerpo completo.")
+        raise MiobjectError(
+            "No hay poses válidas para exportar. Comprueba que se vean los hombros y las caderas."
+        )
 
     converted.sort(key=lambda item: item[0])
     deduplicated: dict[float, dict[str, dict[str, float]]] = {}
     for timestamp, controls in converted:
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
-    source_times = [item[0] for item in converted]
-
-    # Treat the first valid captured pose as the neutral reference pose.
-    references: dict[str, dict[str, float]] = {}
-    for _, controls in converted:
-        for part, values in controls.items():
-            if part not in references:
-                references[part] = dict(values)
-    normalized = []
-    for timestamp, controls in converted:
-        relative = {}
-        for part, values in controls.items():
-            reference = references.get(part, {})
-            relative[part] = {
-                field: _relative_degrees(value, reference.get(field, value))
-                for field, value in values.items()
-            }
-        normalized.append((timestamp, relative))
-    converted = normalized
     source_times = [item[0] for item in converted]
 
     if duration_seconds is None:
@@ -201,7 +245,8 @@ def export_miobject(
                 if part in controls and field in controls[part]
             ]
             if not valid:
-                part_sources[field] = ([0.0], [0.0])
+                default_value = baselines.get(part, {}).get(field, 0.0)
+                part_sources[field] = ([0.0], [default_value])
                 continue
             values = _unwrap_degrees([item[1] for item in valid])
             part_sources[field] = ([item[0] for item in valid], values)
@@ -209,13 +254,20 @@ def export_miobject(
         frame_values = []
         for target in frame_times:
             values = {
-                field: _interpolate(part_sources[field][0], part_sources[field][1], target)
+                field: _interpolate(
+                    part_sources[field][0],
+                    part_sources[field][1],
+                    target,
+                )
                 for field in fields
             }
             frame_values.append(values)
 
         for field in fields:
-            filtered = _smooth([frame[field] for frame in frame_values], smooth_motion)
+            filtered = _smooth(
+                [frame[field] for frame in frame_values],
+                smooth_motion,
+            )
             for index, value in enumerate(filtered):
                 frame_values[index][field] = value
         part_frame_values[part] = frame_values
@@ -226,8 +278,8 @@ def export_miobject(
             continue
         timeline_type = timeline.get("type")
         if timeline_type == "folder":
-            # Remove animation inherited from a sample pose; keep the hierarchy and group settings.
-            timeline["keyframes"] = {}
+            # Freeze the initial transform so the template's group offset is retained.
+            _static_first_keyframe(timeline)
         elif timeline_type == "bodypart":
             part = timeline.get("model_part_name")
             if part in PART_FIELDS:
@@ -243,7 +295,6 @@ def export_miobject(
                 }
                 keyframe_counts[part] = len(selected)
             elif part == "hat":
-                # The hat inherits the head transform and needs no duplicate animation.
                 timeline["keyframes"] = {}
 
     output = Path(output_path)

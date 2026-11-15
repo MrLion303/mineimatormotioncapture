@@ -2,72 +2,59 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
-## Qué incluye esta primera versión
+## Mejoras de la versión 0.2.0
 
-- Vista previa de webcam con el esqueleto detectado superpuesto.
-- Cuenta regresiva de **3 segundos** al pulsar **Grabar**.
-- Duración configurable antes de grabar, de 1 a 300 segundos.
-- Inicio automático al terminar la cuenta regresiva y parada automática al cumplirse la duración.
-- Parada manual y cancelación de la cuenta regresiva.
-- Detección corporal 3D estimada mediante MediaPipe Pose Landmarker.
-- Retargeting inicial de torso, cabeza, brazos y piernas.
-- Suavizado opcional e interpolación al FPS de salida.
-- Reducción opcional de keyframes para evitar archivos innecesariamente densos.
-- Exportación a un nuevo archivo **.miobject** a partir de una plantilla humana seleccionada.
-- Conservación de los identificadores, el modelo, las partes y la jerarquía de la plantilla.
+- Cuenta regresiva de 3 segundos y duración de captura configurable.
+- Selector de modelo **Full** (más detallado) o **Lite** (más ligero).
+- Retargeting local relativo al torso para que inclinar o girar el cuerpo no descontrole brazos y piernas.
+- Conservación de las rotaciones de reposo del archivo Mine-imator utilizado como plantilla.
+- Estabilización temporal One Euro de los landmarks, con filtrado adaptativo para reducir vibraciones sin borrar movimientos lentos.
+- Umbral de keyframes reducido a 0.18° y una clave de respaldo al menos cada 0.10 segundos.
+- Exportación que conserva el primer transform de cada grupo como valor estático.
+- El artifact de GitHub Actions se descarga como **un único ZIP**, sin crear un ZIP interno.
 
 ## Requisitos
 
 - Windows 10 u 11 de 64 bits.
 - Python 3.11 para ejecutar desde el código.
 - Webcam funcional.
-- Conexión a Internet la primera vez para descargar el modelo Pose Landmarker.
-- Un archivo humano **.miobject** de Mine-imator que incluya las pistas **body**, **head**, **left_arm**, **right_arm**, **left_leg** y **right_leg**.
+- Conexión a Internet la primera vez para descargar el modelo de seguimiento.
+- Un archivo humano .miobject de Mine-imator que incluya las partes body, head, left_arm, right_arm, left_leg y right_leg.
 
 ## Ejecutar desde código
-
-Abre PowerShell en la carpeta del repositorio:
 
 ~~~powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python main.py
 ~~~
 
 ## Flujo de uso
 
-1. Conecta la webcam y espera a que aparezca el esqueleto en la vista previa.
-2. Selecciona tu archivo humano **.miobject** como plantilla.
-3. Define la duración y los FPS de exportación.
-4. Colócate de cuerpo completo en el encuadre. Mantén una postura inicial cómoda durante la cuenta regresiva: la primera pose detectada sirve como referencia neutra.
-5. Pulsa **Grabar**. Se mostrará 3, 2, 1 y la captura comenzará al cumplirse los tres segundos.
-6. La grabación terminará automáticamente al llegar a la duración elegida. También puedes detenerla antes.
-7. Pulsa **Exportar .miobject** y guarda el resultado con otro nombre para no sobrescribir tu plantilla.
+1. Conecta la webcam.
+2. Selecciona **Full** para priorizar el detalle del seguimiento o **Lite** si el equipo necesita más rendimiento.
+3. Carga tu plantilla humana .miobject.
+4. Define la duración y los FPS.
+5. Colócate de cuerpo completo dentro del encuadre y mantén tu postura inicial durante la cuenta regresiva.
+6. Pulsa **Grabar**. Se mostrará 3, 2, 1 y después comenzará la captura.
+7. La grabación termina automáticamente al llegar a la duración elegida; también puedes detenerla antes.
+8. Exporta un nuevo .miobject.
 
-## Construcción para Windows
+La primera pose estable se utiliza como referencia neutra. La aplicación conserva los valores base de rotación de la plantilla y aplica cambios relativos respecto a esa postura, en lugar de forzar los ejes de las extremidades a cero.
 
-El workflow **Compilar Windows** se ejecuta en cada actualización de **main** y también puede iniciarse manualmente desde GitHub Actions. Primero ejecuta las pruebas y después compila la aplicación con PyInstaller. El ZIP se publica como artifact descargable de Actions durante 14 días; no se crea un GitHub Release.
+## Compilación de Windows
 
-## Estructura
+El workflow **Compilar Windows** se ejecuta con cada actualización de main y también puede iniciarse manualmente desde GitHub Actions. Ejecuta pruebas y compila la aplicación con PyInstaller. El artifact de Actions contiene directamente los archivos de la aplicación; GitHub lo presenta como un solo ZIP descargable. No se crea un GitHub Release.
 
-- **main.py**: entrada de la aplicación.
-- **mocap_app/camera.py**: webcam, modelo y seguimiento corporal.
-- **mocap_app/retarget.py**: conversión de landmarks a controles del personaje.
-- **mocap_app/miobject.py**: validación de plantillas y escritura de archivos Mine-imator.
-- **mocap_app/main_window.py**: interfaz, cuenta regresiva y control de grabación.
-- **tests/**: pruebas del retargeting y del exportador.
-- **.github/workflows/compilar-windows.yml**: pruebas y compilación para Windows.
+## Precisión y límites
 
-## Precisión y límites conocidos
+MediaPipe estima coordenadas 3D desde una cámara monocular; no mide profundidad real. Los resultados pueden perder precisión si una articulación queda oculta, hay poca luz o la persona gira mucho respecto a la cámara. La versión 0.2.0 mejora la referencia corporal, los valores de reposo y el filtrado, pero el retargeting debe seguir validándose en Mine-imator con capturas reales.
 
-La webcam normal no mide profundidad real. MediaPipe estima coordenadas 3D a partir de una imagen monocular; los giros hacia los lados, las articulaciones ocultas y los movimientos fuera de cámara pueden perder precisión. Esta versión genera rotaciones corporales y flexiones de codos/rodillas; todavía no reconstruye desplazamiento global real en profundidad ni torsiones finas de muñecas o manos.
+## Tecnologías
 
-El mapeo de ángulos es una primera adaptación al sistema de ejes del modelo humano de Mine-imator. Debe probarse en Mine-imator y ajustarse según el resultado visual. La aplicación conserva la estructura de la plantilla y reemplaza las pistas de animación de las partes corporales admitidas; las pistas de grupos se limpian para que una animación anterior de la plantilla no se mezcle con la captura nueva.
-
-## Tecnología y atribución
-
-- MediaPipe Pose Landmarker: detección de pose y estimación de landmarks.
-- OpenCV: acceso a la webcam y visualización.
-- PySide6: interfaz de escritorio.
+- MediaPipe Pose Landmarker: detección corporal y landmarks 3D estimados.
+- OpenCV: acceso a la webcam.
+- PySide6: interfaz.
+- PyInstaller: compilación de Windows.
