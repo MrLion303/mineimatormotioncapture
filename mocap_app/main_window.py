@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         heading.addWidget(subtitle)
         header.addLayout(heading)
         header.addStretch()
-        version = QLabel("PREVIEW 0.2.0")
+        version = QLabel("PREVIEW 0.2.1")
         version.setObjectName("version")
         header.addWidget(version, alignment=Qt.AlignmentFlag.AlignTop)
         page.addLayout(header)

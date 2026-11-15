@@ -2,6 +2,10 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.1
+
+- Selector de cámara activo tras conectar; cambia de dispositivo y la aplicación reconecta automáticamente sin reiniciarse.
+
 ## Mejoras de la versión 0.2.0
 
 - Cuenta regresiva de 3 segundos y duración de captura configurable.
