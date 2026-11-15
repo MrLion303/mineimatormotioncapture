@@ -30,8 +30,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mine-imator Motion Capture")
-        self.setMinimumSize(1080, 760)
-        self.resize(1320, 900)
+        self.setMinimumSize(1080, 700)
+        self.resize(1240, 780)
 
         self.camera_worker: CameraWorker | None = None
         self.camera_ready = False
@@ -61,136 +61,202 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("central")
         self.setCentralWidget(central)
+
         page = QVBoxLayout(central)
-        page.setContentsMargins(24, 20, 24, 20)
-        page.setSpacing(16)
+        page.setContentsMargins(26, 22, 26, 22)
+        page.setSpacing(18)
 
         header = QHBoxLayout()
+        header.setSpacing(14)
+
+        brand = QLabel("NS")
+        brand.setObjectName("brandMark")
+        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand.setFixedSize(48, 48)
+        header.addWidget(brand)
+
         heading = QVBoxLayout()
-        title = QLabel("MINE-IMATOR MOTION CAPTURE")
+        heading.setSpacing(2)
+        eyebrow = QLabel("NEGATIVE STUDIOS  /  TOOLS")
+        eyebrow.setObjectName("eyebrow")
+        title = QLabel("MOTION CAPTURE")
         title.setObjectName("title")
-        subtitle = QLabel("Captura movimiento corporal y conviértelo en keyframes.")
+        subtitle = QLabel("Convierte tus movimientos en animaciones para Mine-imator.")
         subtitle.setObjectName("subtitle")
+        heading.addWidget(eyebrow)
         heading.addWidget(title)
         heading.addWidget(subtitle)
         header.addLayout(heading)
         header.addStretch()
-        version = QLabel("PREVIEW 0.2.1")
+
+        version = QLabel("BETA  0.2.2")
         version.setObjectName("version")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addWidget(version, alignment=Qt.AlignmentFlag.AlignTop)
         page.addLayout(header)
 
         content = QHBoxLayout()
-        content.setSpacing(16)
+        content.setSpacing(18)
         page.addLayout(content, 1)
 
         left_column = QVBoxLayout()
         left_column.setSpacing(12)
-        content.addLayout(left_column, 3)
+        content.addLayout(left_column, 7)
 
         preview_panel = QFrame()
         preview_panel.setObjectName("panel")
         preview_layout = QVBoxLayout(preview_panel)
-        preview_layout.setContentsMargins(12, 12, 12, 12)
-        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(16, 15, 16, 14)
+        preview_layout.setSpacing(12)
 
         preview_header = QHBoxLayout()
-        preview_title = QLabel("VISTA DE CÁMARA")
+        preview_heading = QVBoxLayout()
+        preview_heading.setSpacing(2)
+        preview_title = QLabel("VISTA EN DIRECTO")
         preview_title.setObjectName("sectionTitle")
+        preview_subtitle = QLabel("Seguimiento corporal en tiempo real")
+        preview_subtitle.setObjectName("sectionHint")
+        preview_heading.addWidget(preview_title)
+        preview_heading.addWidget(preview_subtitle)
+        preview_header.addLayout(preview_heading)
+        preview_header.addStretch()
+
         self.camera_state_label = QLabel("SIN CONEXIÓN")
         self.camera_state_label.setObjectName("statePill")
-        preview_header.addWidget(preview_title)
-        preview_header.addStretch()
-        preview_header.addWidget(self.camera_state_label)
+        self.camera_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_header.addWidget(self.camera_state_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         preview_layout.addLayout(preview_header)
 
         preview_host = QWidget()
         preview_grid = QGridLayout(preview_host)
         preview_grid.setContentsMargins(0, 0, 0, 0)
-        self.preview = QLabel("Conecta una cámara para ver el seguimiento corporal.")
+        self.preview = QLabel("Conecta una cámara para comenzar el seguimiento.")
         self.preview.setObjectName("preview")
-        self.preview.setMinimumSize(640, 390)
+        self.preview.setMinimumSize(620, 410)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setWordWrap(True)
+
         self.overlay = QLabel("")
         self.overlay.setObjectName("recordOverlay")
         self.overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.overlay.hide()
+
         preview_grid.addWidget(self.preview, 0, 0)
         preview_grid.addWidget(self.overlay, 0, 0)
         preview_layout.addWidget(preview_host, 1)
 
-        self.status_label = QLabel("Esperando cámara.")
+        status_row = QHBoxLayout()
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("statusDot")
+        status_row.addWidget(self.status_dot, alignment=Qt.AlignmentFlag.AlignTop)
+
+        self.status_label = QLabel("Esperando conexión con la cámara.")
         self.status_label.setObjectName("statusText")
         self.status_label.setWordWrap(True)
-        preview_layout.addWidget(self.status_label)
+        status_row.addWidget(self.status_label, 1)
+        preview_layout.addLayout(status_row)
 
         progress_row = QHBoxLayout()
+        progress_caption = QLabel("PROGRESO DE CAPTURA")
+        progress_caption.setObjectName("microLabel")
+        self.time_label = QLabel("Sin grabación")
+        self.time_label.setObjectName("timeText")
+        progress_row.addWidget(progress_caption)
+        progress_row.addStretch()
+        progress_row.addWidget(self.time_label)
+        preview_layout.addLayout(progress_row)
+
         self.progress = QProgressBar()
         self.progress.setRange(0, 1000)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
-        self.time_label = QLabel("Sin grabación")
-        self.time_label.setObjectName("timeText")
-        progress_row.addWidget(self.progress, 1)
-        progress_row.addWidget(self.time_label)
-        preview_layout.addLayout(progress_row)
+        self.progress.setObjectName("captureProgress")
+        preview_layout.addWidget(self.progress)
         left_column.addWidget(preview_panel, 1)
 
-        info = QLabel(
-            "Consejo: mantén la cabeza, las manos y los pies dentro del encuadre. "
-            "La primera pose estable se utiliza como referencia inicial."
+        tip = QFrame()
+        tip.setObjectName("tipPanel")
+        tip_layout = QHBoxLayout(tip)
+        tip_layout.setContentsMargins(14, 10, 14, 10)
+        tip_layout.setSpacing(10)
+        tip_mark = QLabel("TIP")
+        tip_mark.setObjectName("tipMark")
+        tip_layout.addWidget(tip_mark, alignment=Qt.AlignmentFlag.AlignTop)
+        tip_text = QLabel(
+            "Mantén el cuerpo completo dentro del encuadre y evita ocultar las articulaciones. "
+            "La primera pose estable se utiliza como referencia."
         )
-        info.setObjectName("hint")
-        info.setWordWrap(True)
-        left_column.addWidget(info)
+        tip_text.setObjectName("hint")
+        tip_text.setWordWrap(True)
+        tip_layout.addWidget(tip_text, 1)
+        left_column.addWidget(tip)
 
         right_column = QVBoxLayout()
         right_column.setSpacing(12)
-        content.addLayout(right_column, 2)
+        content.addLayout(right_column, 4)
 
-        capture_panel = self._panel("CONFIGURACIÓN DE CAPTURA")
+        capture_panel = self._panel("AJUSTES DE CAPTURA")
         capture_layout = capture_panel.layout()
 
-        capture_layout.addWidget(self._field_label("Dispositivo de cámara"))
+        capture_layout.addWidget(self._field_label("DISPOSITIVO"))
         self.camera_combo = QComboBox()
         for index in range(6):
             self.camera_combo.addItem(f"Cámara {index}", index)
         self.camera_combo.currentIndexChanged.connect(self._on_camera_selection_changed)
         capture_layout.addWidget(self.camera_combo)
 
-        capture_layout.addWidget(self._field_label("Calidad del seguimiento"))
+        capture_layout.addWidget(self._field_label("CALIDAD DEL SEGUIMIENTO"))
         self.quality_combo = QComboBox()
-        self.quality_combo.addItem("Full · más preciso", "full")
-        self.quality_combo.addItem("Lite · más rápido", "lite")
+        self.quality_combo.addItem("Full  ·  Más preciso", "full")
+        self.quality_combo.addItem("Lite  ·  Más ligero", "lite")
         self.quality_combo.setCurrentIndex(0)
         capture_layout.addWidget(self.quality_combo)
 
-        capture_layout.addWidget(self._field_label("Duración de grabación"))
+        numeric_grid = QGridLayout()
+        numeric_grid.setHorizontalSpacing(10)
+        numeric_grid.setVerticalSpacing(7)
+
+        duration_label = self._field_label("DURACIÓN")
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
         self.duration_spin.setValue(10)
-        self.duration_spin.setSuffix(" segundos")
-        capture_layout.addWidget(self.duration_spin)
+        self.duration_spin.setSuffix(" s")
+        numeric_grid.addWidget(duration_label, 0, 0)
+        numeric_grid.addWidget(self.duration_spin, 1, 0)
 
-        capture_layout.addWidget(self._field_label("FPS de exportación"))
+        fps_label = self._field_label("FPS DE EXPORTACIÓN")
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(12, 60)
         self.fps_spin.setValue(30)
         self.fps_spin.setSuffix(" FPS")
-        capture_layout.addWidget(self.fps_spin)
+        numeric_grid.addWidget(fps_label, 0, 1)
+        numeric_grid.addWidget(self.fps_spin, 1, 1)
+        capture_layout.addLayout(numeric_grid)
 
-        self.smooth_check = QCheckBox("Estabilizar movimiento sin perder gestos suaves")
+        options_panel = QFrame()
+        options_panel.setObjectName("innerPanel")
+        options_layout = QVBoxLayout(options_panel)
+        options_layout.setContentsMargins(12, 10, 12, 10)
+        options_layout.setSpacing(8)
+
+        options_title = QLabel("PROCESAMIENTO")
+        options_title.setObjectName("microLabel")
+        options_layout.addWidget(options_title)
+
+        self.smooth_check = QCheckBox("Estabilizar sin perder gestos suaves")
         self.smooth_check.setChecked(True)
-        capture_layout.addWidget(self.smooth_check)
+        options_layout.addWidget(self.smooth_check)
 
         self.optimize_check = QCheckBox("Optimizar cantidad de keyframes")
         self.optimize_check.setChecked(True)
-        capture_layout.addWidget(self.optimize_check)
+        options_layout.addWidget(self.optimize_check)
+        capture_layout.addWidget(options_panel)
 
-        capture_layout.addSpacing(8)
+        capture_layout.addSpacing(2)
+
         self.camera_button = QPushButton("Conectar cámara")
         self.camera_button.setObjectName("secondaryButton")
         self.camera_button.clicked.connect(self._toggle_camera)
@@ -198,6 +264,7 @@ class MainWindow(QMainWindow):
 
         self.record_button = QPushButton("GRABAR")
         self.record_button.setObjectName("primaryButton")
+        self.record_button.setMinimumHeight(48)
         self.record_button.clicked.connect(self._start_countdown)
         capture_layout.addWidget(self.record_button)
 
@@ -208,33 +275,61 @@ class MainWindow(QMainWindow):
         capture_layout.addWidget(self.stop_button)
         right_column.addWidget(capture_panel)
 
-        template_panel = self._panel("PLANTILLA MINE-IMATOR")
+        template_panel = self._panel("EXPORTACIÓN")
         template_layout = template_panel.layout()
-        self.template_label = QLabel("No se ha seleccionado ningún archivo.")
+
+        target_header = QHBoxLayout()
+        target_title = QLabel("PLANTILLA DE MINE-IMATOR")
+        target_title.setObjectName("microLabel")
+        target_header.addWidget(target_title)
+        target_header.addStretch()
+        target_layout_badge = QLabel(".MIOBJECT")
+        target_layout_badge.setObjectName("fileBadge")
+        target_header.addWidget(target_layout_badge)
+        template_layout.addLayout(target_header)
+
+        self.template_label = QLabel("Ninguna plantilla seleccionada")
         self.template_label.setObjectName("fileLabel")
         self.template_label.setWordWrap(True)
         template_layout.addWidget(self.template_label)
 
-        self.load_template_button = QPushButton("Cargar plantilla .miobject")
+        self.load_template_button = QPushButton("Seleccionar plantilla")
         self.load_template_button.setObjectName("secondaryButton")
         self.load_template_button.clicked.connect(self._load_template)
         template_layout.addWidget(self.load_template_button)
 
-        self.export_button = QPushButton("EXPORTAR .MIOBJECT")
+        self.export_button = QPushButton("EXPORTAR ANIMACIÓN")
         self.export_button.setObjectName("exportButton")
         self.export_button.clicked.connect(self._export)
         template_layout.addWidget(self.export_button)
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "Full ofrece un seguimiento más detallado; Lite consume menos recursos. "
-            "La profundidad de una webcam sigue siendo estimada, por lo que una buena "
-            "iluminación y no ocultar las articulaciones mejora el resultado."
+            "Full ofrece más detalle; Lite consume menos recursos. "
+            "La profundidad de una webcam es estimada."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
         right_column.addWidget(notice)
         right_column.addStretch()
+
+    @staticmethod
+    def _field_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("fieldLabel")
+        return label
+
+    @staticmethod
+    def _panel(title: str) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 15, 16, 15)
+        layout.setSpacing(11)
+        heading = QLabel(title)
+        heading.setObjectName("sectionTitle")
+        layout.addWidget(heading)
+        return panel
 
     @staticmethod
     def _field_label(text: str) -> QLabel:
@@ -257,136 +352,278 @@ class MainWindow(QMainWindow):
     def _apply_style(self) -> None:
         self.setStyleSheet("""
             QWidget {
-                background: #11151b;
-                color: #e8edf3;
+                background: #11120f;
+                color: #e9e9e2;
                 font-family: "Segoe UI";
-                font-size: 10pt;
+                font-size: 9pt;
+            }
+            QWidget#central {
+                background: #11120f;
             }
             QFrame#panel {
-                background: #1a2029;
-                border: 1px solid #2b3542;
+                background: #1b1c18;
+                border: 1px solid #30312a;
+                border-radius: 13px;
+            }
+            QFrame#innerPanel {
+                background: #151611;
+                border: 1px solid #2d2f26;
+                border-radius: 9px;
+            }
+            QFrame#tipPanel {
+                background: #191b15;
+                border: 1px solid #303328;
+                border-radius: 10px;
+            }
+            QLabel#brandMark {
+                color: #c5dda0;
+                background: #24291d;
+                border: 1px solid #3b4630;
                 border-radius: 12px;
+                font-size: 15pt;
+                font-weight: 900;
+                letter-spacing: 1px;
+            }
+            QLabel#eyebrow {
+                color: #8f967f;
+                font-size: 8pt;
+                font-weight: 700;
+                letter-spacing: 1.5px;
             }
             QLabel#title {
-                color: #f3f6fa;
-                font-size: 19pt;
+                color: #f3f3ed;
+                font-size: 20pt;
+                font-weight: 800;
+                letter-spacing: 1.2px;
+            }
+            QLabel#subtitle {
+                color: #a4a69a;
+                font-size: 9pt;
+            }
+            QLabel#version {
+                color: #c2d69f;
+                background: #24291d;
+                border: 1px solid #38432c;
+                border-radius: 7px;
+                padding: 7px 10px;
+                font-size: 8pt;
+                font-weight: 800;
+                letter-spacing: 0.6px;
+            }
+            QLabel#sectionTitle {
+                color: #e7e8df;
+                font-weight: 800;
+                font-size: 9pt;
+                letter-spacing: 1.1px;
+            }
+            QLabel#sectionHint {
+                color: #85877b;
+                font-size: 8pt;
+            }
+            QLabel#preview {
+                background: #090a08;
+                color: #77796e;
+                border: 1px solid #303128;
+                border-radius: 9px;
+                font-size: 10pt;
+            }
+            QLabel#recordOverlay {
+                background: rgba(8, 9, 6, 188);
+                color: #d0e6aa;
+                font-size: 58pt;
+                font-weight: 900;
+                border: 1px solid rgba(180, 207, 137, 90);
+                border-radius: 9px;
+            }
+            QLabel#statusDot {
+                color: #a9c87d;
+                font-size: 9pt;
+                padding-top: 2px;
+            }
+            QLabel#statusText {
+                color: #c3c4b9;
+                font-size: 9pt;
+            }
+            QLabel#hint {
+                color: #96998b;
+                font-size: 8pt;
+            }
+            QLabel#timeText {
+                color: #c6dba0;
+                font-weight: 800;
+                min-width: 100px;
+            }
+            QLabel#microLabel {
+                color: #898d7c;
+                font-size: 7.5pt;
                 font-weight: 800;
                 letter-spacing: 1px;
             }
-            QLabel#subtitle, QLabel#hint {
-                color: #9aa8b8;
-            }
-            QLabel#version {
-                color: #75d7b5;
-                font-size: 9pt;
-                font-weight: 700;
-                padding: 7px 10px;
-                background: #1d302d;
-                border-radius: 7px;
-            }
-            QLabel#sectionTitle {
-                color: #dce5ed;
-                font-weight: 700;
-                font-size: 9pt;
-                letter-spacing: 0.7px;
-            }
-            QLabel#preview {
-                background: #080b10;
-                color: #798797;
-                border: 1px solid #303b49;
-                border-radius: 8px;
-                font-size: 11pt;
-            }
-            QLabel#recordOverlay {
-                background: rgba(5, 9, 14, 150);
-                color: #ffffff;
-                font-size: 58pt;
-                font-weight: 800;
-                border-radius: 8px;
-            }
-            QLabel#statusText, QLabel#fileLabel {
-                color: #b6c2ce;
-            }
-            QLabel#timeText {
-                color: #75d7b5;
-                font-weight: 700;
-                min-width: 100px;
-            }
             QLabel#statePill {
-                color: #9aa8b8;
-                background: #27313d;
+                color: #b6b9a9;
+                background: #292b23;
+                border: 1px solid #3a3c30;
                 border-radius: 7px;
-                padding: 5px 8px;
-                font-size: 8pt;
-                font-weight: 700;
+                padding: 6px 9px;
+                font-size: 7.5pt;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+            }
+            QLabel#tipMark {
+                color: #c0d699;
+                background: #29301f;
+                border-radius: 5px;
+                padding: 4px 6px;
+                font-size: 7pt;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+            }
+            QLabel#fileLabel {
+                color: #d7d8ce;
+                background: #151611;
+                border: 1px solid #2d2f26;
+                border-radius: 7px;
+                padding: 10px;
+                font-size: 9pt;
+            }
+            QLabel#fileBadge {
+                color: #aebf8c;
+                background: #25291e;
+                border: 1px solid #3b422e;
+                border-radius: 5px;
+                padding: 4px 6px;
+                font-size: 7pt;
+                font-weight: 800;
             }
             QLabel#fieldLabel {
-                color: #9eacba;
-                font-size: 9pt;
-                margin-top: 3px;
+                color: #96998a;
+                font-size: 7.5pt;
+                font-weight: 800;
+                letter-spacing: 0.7px;
+                margin-top: 2px;
             }
             QComboBox, QSpinBox {
-                background: #111821;
-                color: #e8edf3;
-                border: 1px solid #344253;
+                background: #13140f;
+                color: #ecece4;
+                border: 1px solid #36382e;
                 border-radius: 7px;
-                padding: 8px;
-                min-height: 24px;
+                padding: 8px 10px;
+                min-height: 23px;
+                selection-background-color: #53633b;
+            }
+            QComboBox:hover, QSpinBox:hover {
+                border: 1px solid #626b4c;
+                background: #171911;
             }
             QComboBox:focus, QSpinBox:focus {
-                border: 1px solid #70d5b3;
+                border: 1px solid #9dbb6d;
+            }
+            QComboBox::drop-down {
+                border: 0;
+                width: 25px;
+            }
+            QComboBox QAbstractItemView {
+                background: #1b1c18;
+                color: #ecece4;
+                border: 1px solid #424536;
+                selection-background-color: #3d4930;
+                selection-color: #f4f5ed;
+                outline: 0;
+                padding: 4px;
             }
             QCheckBox {
-                color: #c4ced8;
+                color: #c3c5b8;
                 spacing: 8px;
-                padding: 4px 0;
+                padding: 2px 0;
+                font-size: 8.5pt;
+            }
+            QCheckBox:hover {
+                color: #e7e9dc;
             }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
+                border: 1px solid #565849;
+                border-radius: 4px;
+                background: #11120e;
+            }
+            QCheckBox::indicator:hover {
+                border: 1px solid #9dbb6d;
+            }
+            QCheckBox::indicator:checked {
+                background: #a9c87d;
+                border: 1px solid #a9c87d;
             }
             QPushButton {
-                min-height: 38px;
-                border: 0;
-                border-radius: 7px;
-                padding: 0 12px;
-                font-weight: 700;
+                min-height: 37px;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                padding: 0 13px;
+                font-weight: 800;
+                letter-spacing: 0.3px;
             }
             QPushButton:disabled {
-                color: #677383;
-                background: #29313c;
+                color: #696b60;
+                background: #24251f;
+                border-color: #2d2e27;
             }
             QPushButton#primaryButton {
-                color: #08130f;
-                background: #75d7b5;
-                font-size: 12pt;
+                color: #171b10;
+                background: #b2ce85;
+                border-color: #b2ce85;
+                font-size: 11pt;
             }
-            QPushButton#primaryButton:hover { background: #8be5c5; }
+            QPushButton#primaryButton:hover {
+                background: #c1dc95;
+                border-color: #c1dc95;
+            }
+            QPushButton#primaryButton:pressed {
+                background: #95b36a;
+            }
             QPushButton#secondaryButton {
-                color: #e1e8ef;
-                background: #303b49;
+                color: #e2e3d9;
+                background: #2c2e26;
+                border-color: #3b3d32;
             }
-            QPushButton#secondaryButton:hover { background: #3b4a5b; }
+            QPushButton#secondaryButton:hover {
+                background: #373a2e;
+                border-color: #5b6247;
+            }
             QPushButton#stopButton {
-                color: #ffd9d9;
-                background: #512b33;
+                color: #e4b6a8;
+                background: #35251f;
+                border-color: #4a3027;
             }
-            QPushButton#stopButton:hover { background: #67333e; }
+            QPushButton#stopButton:hover {
+                background: #493027;
+                border-color: #76503c;
+            }
             QPushButton#exportButton {
-                color: #dceaff;
-                background: #31547c;
+                color: #c9dda3;
+                background: #292f20;
+                border-color: #465238;
             }
-            QPushButton#exportButton:hover { background: #3a6696; }
-            QProgressBar {
+            QPushButton#exportButton:hover {
+                color: #e2f1c4;
+                background: #343d27;
+                border-color: #64784a;
+            }
+            QProgressBar#captureProgress {
                 border: 0;
                 border-radius: 4px;
-                background: #303b49;
-                min-height: 8px;
-                max-height: 8px;
+                background: #303127;
+                min-height: 7px;
+                max-height: 7px;
             }
-            QProgressBar::chunk {
-                background: #75d7b5;
+            QProgressBar#captureProgress::chunk {
+                background: #a9c87d;
                 border-radius: 4px;
+            }
+            QToolTip {
+                color: #eeeeE7;
+                background: #25261f;
+                border: 1px solid #535641;
+                padding: 5px;
             }
         """)
 
