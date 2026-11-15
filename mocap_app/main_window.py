@@ -642,6 +642,6 @@ class MainWindow(QMainWindow):
         worker = self.camera_worker
         if worker is not None:
             worker.stop()
-            worker.wait(4000)
+            worker.wait()
             self.camera_worker = None
         event.accept()

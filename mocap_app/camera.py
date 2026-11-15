@@ -45,7 +45,7 @@ def _download_model(target: Path, status_callback) -> None:
     )
     status_callback("Descargando el modelo de seguimiento corporal...")
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=20) as response:
             with temporary.open("wb") as output:
                 while True:
                     chunk = response.read(1024 * 1024)
@@ -88,9 +88,10 @@ class CameraWorker(QThread):
                     "Prueba otro dispositivo o cierra las aplicaciones que la estén usando."
                 )
 
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            camera.set(cv2.CAP_PROP_FPS, 30)
 
             model_path = default_model_path()
             if not model_path.exists():
@@ -126,9 +127,10 @@ class CameraWorker(QThread):
                     time.sleep(0.01)
                     continue
                 failed_reads = 0
+                captured_at = time.monotonic()
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                timestamp_ms = max(last_timestamp_ms + 1, int(time.monotonic() * 1000))
+                timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                 result = landmarker.detect_for_video(mp_image, timestamp_ms)
@@ -159,7 +161,7 @@ class CameraWorker(QThread):
                                 for point in image_landmarks
                             ],
                         }
-                        self.pose_ready.emit(pose_data, time.monotonic())
+                        self.pose_ready.emit(pose_data, captured_at)
 
                 mirrored = cv2.flip(frame, 1)
                 rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
