@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
 
         self.camera_worker: CameraWorker | None = None
         self.camera_ready = False
+        self._camera_switch_pending = False
         self.template_path: Path | None = None
         self.last_image: QImage | None = None
 
@@ -157,6 +158,7 @@ class MainWindow(QMainWindow):
         self.camera_combo = QComboBox()
         for index in range(6):
             self.camera_combo.addItem(f"Cámara {index}", index)
+        self.camera_combo.currentIndexChanged.connect(self._on_camera_selection_changed)
         capture_layout.addWidget(self.camera_combo)
 
         capture_layout.addWidget(self._field_label("Calidad del seguimiento"))
@@ -395,6 +397,11 @@ class MainWindow(QMainWindow):
         if self.camera_worker is not None:
             self._disconnect_camera()
             return
+        self._start_camera_worker()
+
+    def _start_camera_worker(self) -> None:
+        if self.camera_worker is not None:
+            return
 
         camera_index = int(self.camera_combo.currentData())
         model_variant = str(self.quality_combo.currentData())
@@ -407,18 +414,40 @@ class MainWindow(QMainWindow):
         worker.failed.connect(self._camera_error)
         worker.finished.connect(lambda worker=worker: self._camera_finished(worker))
 
+        self.camera_ready = False
         self.camera_button.setText("Conectando...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
         self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTANDO")
+        self._set_status(f"Conectando a Cámara {camera_index}...")
         worker.start()
+
+    def _on_camera_selection_changed(self, _index: int) -> None:
+        if self.state != "idle" or self.camera_worker is None or not self.camera_ready:
+            return
+
+        selected_index = int(self.camera_combo.currentData())
+        if selected_index == self.camera_worker.camera_index:
+            return
+
+        self._camera_switch_pending = True
+        self.camera_ready = False
+        self.camera_button.setText("Cambiando cámara...")
+        self.camera_button.setEnabled(False)
+        self.camera_combo.setEnabled(False)
+        self.quality_combo.setEnabled(False)
+        self.camera_state_label.setText("CAMBIANDO")
+        self.preview.clear()
+        self.preview.setText(f"Conectando a Cámara {selected_index}...")
+        self._set_status(f"Cambiando a Cámara {selected_index}...")
+        self.camera_worker.stop()
 
     def _camera_ready(self) -> None:
         self.camera_ready = True
         self.camera_button.setText("Desconectar cámara")
         self.camera_button.setEnabled(True)
-        self.camera_combo.setEnabled(False)
+        self.camera_combo.setEnabled(self.state == "idle")
         self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTADA")
         self._update_actions()
@@ -430,8 +459,19 @@ class MainWindow(QMainWindow):
     def _camera_finished(self, worker: CameraWorker) -> None:
         if self.camera_worker is not worker:
             return
+
         self.camera_worker = None
         self.camera_ready = False
+        worker.deleteLater()
+
+        if self._camera_switch_pending:
+            self._camera_switch_pending = False
+            self._set_status(
+                f"Conectando a Cámara {int(self.camera_combo.currentData())}..."
+            )
+            self._start_camera_worker()
+            return
+
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(True)
@@ -440,7 +480,6 @@ class MainWindow(QMainWindow):
         self.record_button.setEnabled(False)
         if self.state != "idle":
             self._stop_capture()
-        worker.deleteLater()
 
     def _disconnect_camera(self) -> None:
         if self.state != "idle":
@@ -448,6 +487,7 @@ class MainWindow(QMainWindow):
         worker = self.camera_worker
         self.camera_worker = None
         self.camera_ready = False
+        self._camera_switch_pending = False
         if worker is not None:
             worker.stop()
             worker.wait()
@@ -575,7 +615,9 @@ class MainWindow(QMainWindow):
     def _restore_controls(self) -> None:
         self.duration_spin.setEnabled(True)
         self.fps_spin.setEnabled(True)
-        self.camera_combo.setEnabled(self.camera_worker is None)
+        self.camera_combo.setEnabled(
+            self.state == "idle" and (self.camera_worker is None or self.camera_ready)
+        )
         self.quality_combo.setEnabled(self.camera_worker is None)
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
