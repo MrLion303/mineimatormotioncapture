@@ -30,8 +30,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mine-imator Motion Capture")
-        self.setMinimumSize(1080, 700)
-        self.resize(1240, 780)
+        self.setMinimumSize(1080, 760)
+        self.resize(1320, 900)
 
         self.camera_worker: CameraWorker | None = None
         self.camera_ready = False
