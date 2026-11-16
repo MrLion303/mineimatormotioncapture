@@ -10,7 +10,7 @@ from .retarget import calculate_pose_controls, stabilize_pose_samples
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 PART_FIELDS = {
-    "body": ("ROT_X", "ROT_Y", "ROT_Z"),
+    "body": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X", "BEND_ANGLE_Z"),
     "head": ("ROT_X", "ROT_Y", "ROT_Z"),
     "left_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
@@ -60,6 +60,18 @@ def validate_template(data: dict[str, Any]) -> None:
     if missing:
         names = ", ".join(sorted(missing))
         raise MiobjectError(f"Faltan pistas corporales necesarias en la plantilla: {names}")
+
+
+def _first_keyframe_data(timeline: dict[str, Any]) -> dict[str, Any]:
+    keyframes = timeline.get("keyframes")
+    if not isinstance(keyframes, dict) or not keyframes:
+        return {}
+    try:
+        first_frame = min(keyframes, key=lambda frame: float(frame))
+    except (TypeError, ValueError):
+        first_frame = next(iter(keyframes))
+    values = keyframes.get(first_frame, {})
+    return dict(values) if isinstance(values, dict) else {}
 
 
 def _first_keyframe_values(timeline: dict[str, Any]) -> dict[str, float]:
@@ -121,6 +133,57 @@ def _template_part_parents(data: dict[str, Any]) -> dict[str, str]:
     return parents
 
 
+def _template_static_part_fields(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Keep rig-specific fields that the motion retargeter does not animate."""
+    static_fields: dict[str, dict[str, Any]] = {}
+    for timeline in data.get("timelines", []):
+        if not isinstance(timeline, dict) or timeline.get("type") != "bodypart":
+            continue
+        part = timeline.get("model_part_name")
+        if not isinstance(part, str):
+            continue
+        dynamic_fields = set(PART_FIELDS.get(part, ()))
+        values: dict[str, Any] = {}
+        defaults = timeline.get("default_values")
+        if isinstance(defaults, dict):
+            values.update(defaults)
+        values.update(_first_keyframe_data(timeline))
+        preserved = {
+            str(key): value
+            for key, value in values.items()
+            if key not in dynamic_fields and key != "TRANSITION"
+        }
+        if preserved:
+            static_fields[part] = preserved
+    return static_fields
+
+
+def _template_body_bend_axes(data: dict[str, Any]) -> tuple[str, ...]:
+    """Return the bend axes actually present in the selected torso rig."""
+    body_timeline = next(
+        (
+            timeline
+            for timeline in data.get("timelines", [])
+            if isinstance(timeline, dict)
+            and timeline.get("type") == "bodypart"
+            and timeline.get("model_part_name") == "body"
+        ),
+        None,
+    )
+    if body_timeline is None:
+        return ()
+    values: dict[str, Any] = {}
+    defaults = body_timeline.get("default_values")
+    if isinstance(defaults, dict):
+        values.update(defaults)
+    values.update(_first_keyframe_data(body_timeline))
+    return tuple(
+        field
+        for field in ("BEND_ANGLE_X", "BEND_ANGLE_Z")
+        if field in values
+    )
+
+
 def _template_baselines(data: dict[str, Any]) -> dict[str, dict[str, float]]:
     baselines: dict[str, dict[str, float]] = {}
     for timeline in data.get("timelines", []):
@@ -145,7 +208,8 @@ def _template_baselines(data: dict[str, Any]) -> dict[str, dict[str, float]]:
 
 
 def _static_first_keyframe(timeline: dict[str, Any]) -> None:
-    values = _first_keyframe_values(timeline)
+    values = _first_keyframe_data(timeline)
+    values.pop("TRANSITION", None)
     timeline["keyframes"] = {"0": values} if values else {}
 
 
@@ -245,6 +309,8 @@ def export_miobject(
     reference_pose = _reference_pose(stabilized)
     baselines = _template_baselines(data)
     part_parents = _template_part_parents(data)
+    static_part_fields = _template_static_part_fields(data)
+    body_bend_axes = _template_body_bend_axes(data)
 
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, pose in stabilized:
@@ -253,6 +319,7 @@ def export_miobject(
             reference_pose=reference_pose,
             base_values=baselines,
             part_parents=part_parents,
+            body_bend_axes=body_bend_axes,
         )
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
@@ -329,16 +396,18 @@ def export_miobject(
                 fields = PART_FIELDS[part]
                 values = part_frame_values[part]
                 selected = _select_keyframes(values, fields, int(fps), optimize_keyframes)
-                timeline["keyframes"] = {
-                    str(frame): {
+                timeline["keyframes"] = {}
+                for frame in selected:
+                    keyframe_values = dict(static_part_fields.get(part, {}))
+                    keyframe_values.update({
                         field: round(float(values[frame][field]), 4)
                         for field in fields
-                    }
-                    for frame in selected
-                }
+                    })
+                    timeline["keyframes"][str(frame)] = keyframe_values
                 keyframe_counts[part] = len(selected)
-            elif part == "hat":
-                timeline["keyframes"] = {}
+            else:
+                # Keep accessories and other parts at their initial transform.
+                _static_first_keyframe(timeline)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)

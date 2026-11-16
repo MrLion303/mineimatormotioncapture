@@ -390,6 +390,7 @@ def calculate_pose_controls(
     reference_pose: dict[str, Any] | None = None,
     base_values: dict[str, dict[str, float]] | None = None,
     part_parents: dict[str, str] | None = None,
+    body_bend_axes: tuple[str, ...] = (),
 ) -> dict[str, dict[str, float]]:
     """Calculate local rotations using the actual Mine-imator part hierarchy."""
     reference_pose = reference_pose or pose
@@ -404,7 +405,17 @@ def calculate_pose_controls(
     root_delta = _relative_basis_rotation(reference_root, current_root)
 
     controls: dict[str, dict[str, float]] = {}
-    controls["body"] = _apply_rotation_delta(base_values, "body", body_delta)
+    body_values = _apply_rotation_delta(base_values, "body", body_delta)
+    if body_bend_axes:
+        base_body = (base_values or {}).get("body", {})
+        delta_x, _delta_y, delta_z = _quaternion_to_euler_xyz(body_delta)
+        if "BEND_ANGLE_X" in body_bend_axes:
+            body_values["BEND_ANGLE_X"] = float(base_body.get("BEND_ANGLE_X", 0.0)) + delta_x
+            body_values["ROT_X"] = float(base_body.get("ROT_X", 0.0))
+        if "BEND_ANGLE_Z" in body_bend_axes:
+            body_values["BEND_ANGLE_Z"] = float(base_body.get("BEND_ANGLE_Z", 0.0)) + delta_z
+            body_values["ROT_Z"] = float(base_body.get("ROT_Z", 0.0))
+    controls["body"] = body_values
 
     current_head = _head_basis(pose)
     reference_head = _head_basis(reference_pose)

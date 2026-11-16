@@ -3,7 +3,9 @@ import math
 
 from mocap_app.miobject import (
     _select_keyframes,
+    _template_body_bend_axes,
     _template_part_parents,
+    _template_static_part_fields,
     export_miobject,
 )
 from mocap_app.retarget import calculate_pose_controls
@@ -35,10 +37,15 @@ def standing_pose():
 
 def make_template(path):
     parts = {
-        "body": {"ROT_X": 7.0, "ROT_Y": 4.4},
+        "body": {
+            "ROT_X": 7.0,
+            "ROT_Y": 4.4,
+            "BEND_ANGLE_X": -4.4,
+            "BEND_ANGLE_Z": 20.4,
+        },
         "head": {"ROT_X": 3.2, "ROT_Y": 11.3},
-        "left_arm": {"ROT_Y": 120.2, "BEND_ANGLE_X": 10.9},
-        "right_arm": {"ROT_Y": -60.1, "BEND_ANGLE_X": 10.9},
+        "left_arm": {"ROT_Y": 120.2, "BEND_ANGLE_X": 10.9, "POS_Z": -0.53},
+        "right_arm": {"ROT_Y": -60.1, "BEND_ANGLE_X": 10.9, "POS_Z": -0.43},
         "left_leg": {"ROT_X": -29.5, "ROT_Y": 11.4, "BEND_ANGLE_X": 30.0},
         "right_leg": {"ROT_X": 37.1, "ROT_Y": -20.6, "BEND_ANGLE_X": 38.9},
     }
@@ -58,7 +65,12 @@ def make_template(path):
             "type": "bodypart",
             "model_part_name": part,
             "parent": parent,
-            "keyframes": {"0": values},
+            "keyframes": {
+                "0": {
+                    **values,
+                    **({"TEXTURE_OBJ": "GREGOR_HEAD_TEXTURE"} if part == "head" else {}),
+                }
+            },
         })
     timelines.append({
         "id": "hat",
@@ -147,6 +159,31 @@ def test_export_preserves_template_rest_pose_and_group_transform(tmp_path):
     folder = next(item for item in exported["timelines"] if item["type"] == "folder")
     assert folder["keyframes"] == {"0": {"ROT_Y": 80.0}}
 
+    body = next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "body"
+    )
+    body_start = body["keyframes"]["0"]
+    assert abs(body_start["BEND_ANGLE_X"] - (-4.4)) < 0.02
+    assert abs(body_start["BEND_ANGLE_Z"] - 20.4) < 0.02
+
+    head = next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "head"
+    )
+    assert head["keyframes"]["0"]["TEXTURE_OBJ"] == "GREGOR_HEAD_TEXTURE"
+
+    left_arm = next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "left_arm"
+    )
+    right_arm = next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "right_arm"
+    )
+    assert left_arm["keyframes"]["0"]["POS_Z"] == -0.53
+    assert right_arm["keyframes"]["0"]["POS_Z"] == -0.43
+
     expected_baselines = {
         "left_arm": {"ROT_Y": 120.2, "BEND_ANGLE_X": 10.9},
         "right_arm": {"ROT_Y": -60.1, "BEND_ANGLE_X": 10.9},
@@ -203,13 +240,19 @@ def test_template_hierarchy_detects_body_children_and_root_legs(tmp_path):
     make_template(template_path)
     from mocap_app.miobject import load_template
 
-    parents = _template_part_parents(load_template(template_path))
+    template = load_template(template_path)
+    parents = _template_part_parents(template)
     assert parents["body"] == "root"
     assert parents["head"] == "body"
     assert parents["left_arm"] == "body"
     assert parents["right_arm"] == "body"
     assert parents["left_leg"] == "root"
     assert parents["right_leg"] == "root"
+    assert _template_body_bend_axes(template) == ("BEND_ANGLE_X", "BEND_ANGLE_Z")
+    static_fields = _template_static_part_fields(template)
+    assert static_fields["head"]["TEXTURE_OBJ"] == "GREGOR_HEAD_TEXTURE"
+    assert static_fields["left_arm"]["POS_Z"] == -0.53
+    assert static_fields["right_arm"]["POS_Z"] == -0.43
 
 
 def test_legs_do_not_counter_rotate_when_only_torso_turns():

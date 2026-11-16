@@ -2,6 +2,12 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.5
+
+- El exportador conserva las propiedades de rig que no controla el retargeting, como `POS_Z` y `TEXTURE_OBJ`.
+- Las pistas accesorias y sus transformaciones iniciales ya no se vacían al exportar.
+- Si el `.miobject` define `BEND_ANGLE_X/Z` en el torso, el movimiento de inclinación se envía a esos canales en vez de duplicarse con `ROT_X/Z`.
+
 ## Mejoras de la versión 0.2.4
 
 - Retargeting basado en la jerarquía real del `.miobject`: cabeza y brazos heredan el torso; las piernas heredan el giro de pelvis/raíz sin compensar un giro aislado del torso.
