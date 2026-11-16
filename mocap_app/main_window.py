@@ -8,7 +8,6 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -216,8 +215,9 @@ class MainWindow(QMainWindow):
         tip_mark.setObjectName("tipMark")
         tip_layout.addWidget(tip_mark, alignment=Qt.AlignmentFlag.AlignTop)
         tip_text = QLabel(
-            "Mantén el cuerpo completo dentro del encuadre y evita ocultar las articulaciones. "
-            "La primera pose estable se utiliza como referencia."
+            "Mantén el cuerpo completo dentro del encuadre y evita ocultar hombros, codos, "
+            "muñecas, caderas, rodillas y tobillos. El personaje permanecerá en la posición "
+            "de la plantilla; se animarán las articulaciones capturadas."
         )
         tip_text.setObjectName("hint")
         tip_text.setWordWrap(True)
@@ -310,30 +310,6 @@ class MainWindow(QMainWindow):
         self.optimize_check.setChecked(True)
         options_layout.addWidget(self.optimize_check)
 
-        self.translation_check = QCheckBox("Capturar desplazamiento del cuerpo")
-        self.translation_check.setChecked(True)
-        self.translation_check.setToolTip(
-            "Anima la posición global del personaje en Mine-imator usando el "
-            "desplazamiento de las caderas en la cámara."
-        )
-        options_layout.addWidget(self.translation_check)
-
-        translation_row = QHBoxLayout()
-        translation_label = QLabel("Escala de desplazamiento")
-        translation_label.setObjectName("fieldLabel")
-        self.translation_scale_spin = QDoubleSpinBox()
-        self.translation_scale_spin.setRange(4.0, 40.0)
-        self.translation_scale_spin.setDecimals(1)
-        self.translation_scale_spin.setSingleStep(1.0)
-        self.translation_scale_spin.setValue(18.0)
-        self.translation_scale_spin.setSuffix(" u/m")
-        self.translation_scale_spin.setToolTip(
-            "Unidades de Mine-imator por metro estimado. Ajusta este valor "
-            "si el personaje se desplaza demasiado o muy poco."
-        )
-        translation_row.addWidget(translation_label, 1)
-        translation_row.addWidget(self.translation_scale_spin)
-        options_layout.addLayout(translation_row)
         capture_layout.addWidget(options_panel)
 
         capture_layout.addSpacing(2)
@@ -1165,8 +1141,6 @@ class MainWindow(QMainWindow):
                 duration_seconds=self.recorded_duration,
                 optimize_keyframes=self.optimize_check.isChecked(),
                 smooth_motion=self.smooth_check.isChecked(),
-                capture_translation=self.translation_check.isChecked(),
-                translation_scale=self.translation_scale_spin.value(),
             )
         except (MiobjectError, OSError, ValueError) as exc:
             QMessageBox.critical(self, "No se pudo exportar", str(exc))

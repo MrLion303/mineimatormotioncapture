@@ -2,74 +2,16 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
-## Mejoras de la versión 0.2.9
+## Versión 0.2.10
 
-- La orientación de pelvis se calcula únicamente desde la línea de las caderas; el balanceo alternado de las piernas ya no provoca giros falsos de toda la raíz.
-- El retargeting utiliza la orientación 3D de los dos segmentos de cada extremidad para conservar mejor la dirección y el plano de flexión de brazos y piernas.
-- La rotación del movimiento se compone matemáticamente con los ángulos de reposo del rig, en vez de sumar Euler por separado.
-- Se exporta el desplazamiento global estimado de las caderas en `char.POS_X/POS_Y/POS_Z`, con escala ajustable y opción para desactivarlo.
-- Durante REC se conserva la secuencia completa de fotogramas comprimidos con sus timestamps (hasta 18.000 muestras, equivalente a 5 minutos a 60 FPS). Al detener la toma, se procesa toda la cola antes de habilitar la exportación; no se cierra la captura mientras queden fotogramas pendientes.
-- Se elimina el segundo suavizado de ángulos; la estabilización temporal se aplica una sola vez sobre landmarks 2D y 3D, con respuesta más rápida.
-- Al perder momentáneamente las caderas, la raíz conserva la última posición válida en lugar de regresar al origen de la captura.
-
-# Mejoras de la versión 0.2.8
-
-- La orientación global se calcula ahora desde la pelvis (caderas y rodillas), no desde el torso. Una torsión de cintura permanece en `body`; un giro de todo el cuerpo se exporta en `char.ROT_Z`.
-- Si no se puede estimar el marco de pelvis por oclusión, se usa el torso como respaldo.
-- Pruebas separadas para giro de torso y giro completo del personaje.
-
-## Mejoras de la versión 0.2.7
-
-- La cámara ya no recibe una petición fija de 60 FPS; OpenCV usa la frecuencia que negocie el controlador.
-- Control independiente de **FPS de vista previa** (10–60, predeterminado 30), sin cambiar la frecuencia de captura ni la de exportación.
-- Se limita la conversión y publicación de imágenes al ritmo de vista previa elegido; el hilo de captura sigue leyendo y enviando frames recientes al análisis.
-- Página desplazable, ventana mínima más compacta y vista previa adaptable para evitar que los controles se compriman o se superpongan.
-- El giro de orientación del personaje se exporta en `char.ROT_Z`, conforme a las pistas de los rigs NICO y GREGOR; el torso conserva su inclinación local.
-
-## Mejoras de la versión 0.2.6
-
-- Conversión de cuaterniones a Euler con continuidad temporal: el retargeter escoge la rama equivalente más cercana al fotograma anterior y evita saltos de 180° al girar más allá de 90°.
-
-## Mejoras de la versión 0.2.5
-
-- El exportador conserva las propiedades de rig que no controla el retargeting, como `POS_Z` y `TEXTURE_OBJ`.
-- Las pistas accesorias y sus transformaciones iniciales ya no se vacían al exportar.
-- Si el `.miobject` define `BEND_ANGLE_X/Z` en el torso, el movimiento de inclinación se envía a esos canales en vez de duplicarse con `ROT_X/Z`.
-
-## Mejoras de la versión 0.2.4
-
-- Retargeting basado en la jerarquía real del `.miobject`: cabeza y brazos heredan el torso; las piernas heredan el giro de pelvis/raíz sin compensar un giro aislado del torso.
-- La jerarquía se obtiene de las relaciones `parent` del archivo elegido; no se presupone que todas las partes tengan el mismo padre.
-- Selector de cámaras con nombres reales de dispositivos, backend detectado y botón para actualizar la lista.
-- Añadida la opción **Heavy** de MediaPipe Pose Landmarker, conservando Full y Lite.
-
-## Mejoras de la versión 0.2.3
-
-- La cámara solicita 60 FPS en lugar de estar limitada a 30 FPS.
-- La captura de vídeo ya no espera a que MediaPipe termine de analizar cada frame.
-- El seguimiento corporal corre en un hilo independiente y usa una cola corta que prioriza los frames recientes para evitar retrasos acumulados.
-- La interfaz muestra por separado los FPS medidos de la cámara y del análisis de IA.
-- La vista previa toma el frame más reciente cada 16 ms, sin acumular señales antiguas en la cola de eventos.
-
-## Mejoras de la versión 0.2.2
-
-- Interfaz renovada con una paleta dark neutral de grafito y negro, acentos verde salvia y paneles más claros de leer.
-- Vista de cámara más amplia, cabecera de marca, panel de opciones compacto y botones con jerarquía visual definida.
-
-## Mejoras de la versión 0.2.1
-
-- Selector de cámara activo tras conectar; cambia de dispositivo y la aplicación reconecta automáticamente sin reiniciarse.
-
-## Mejoras de la versión 0.2.0
-
-- Cuenta regresiva de 3 segundos y duración de captura configurable.
-- Selector de modelo **Full** (más detallado) o **Lite** (más ligero).
-- Retargeting local relativo al torso para que inclinar o girar el cuerpo no descontrole brazos y piernas.
-- Conservación de las rotaciones de reposo del archivo Mine-imator utilizado como plantilla.
-- Estabilización temporal One Euro de los landmarks, con filtrado adaptativo para reducir vibraciones sin borrar movimientos lentos.
-- Umbral de keyframes reducido a 0.18° y una clave de respaldo al menos cada 0.10 segundos.
-- Exportación que conserva el primer transform de cada grupo como valor estático.
-- El artifact de GitHub Actions se descarga como **un único ZIP**, sin crear un ZIP interno.
+- Se recupera el mapeo directo de articulaciones de la primera versión, que calcula los ángulos desde los landmarks de cada segmento sin una reconstrucción adicional de cuaterniones ni compensaciones entre jerarquías.
+- Brazos: hombro–codo para la orientación del brazo y hombro–codo–muñeca para la flexión.
+- Piernas: cadera–rodilla para la orientación de la pierna y cadera–rodilla–tobillo para la flexión.
+- El torso y la cabeza se calculan desde sus propios landmarks.
+- La pista `char` se congela en su primer transform. Se eliminan movimientos globales heredados y no se generan desplazamientos nuevos: el personaje permanece en la posición definida por la plantilla.
+- La plantilla conserva campos estáticos del rig, como `POS_Z` y `TEXTURE_OBJ`, además de accesorios.
+- La cola de captura mantiene los frames con timestamps durante REC y los procesa antes de habilitar la exportación.
+- La cámara no se fuerza a 60 FPS; los FPS de vista previa se configuran de forma independiente.
 
 ## Requisitos
 
@@ -77,7 +19,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - Python 3.11 para ejecutar desde el código.
 - Webcam funcional.
 - Conexión a Internet la primera vez para descargar el modelo de seguimiento.
-- Un archivo humano .miobject de Mine-imator que incluya las partes body, head, left_arm, right_arm, left_leg y right_leg.
+- Un archivo humano .miobject de Mine-imator que incluya `body`, `head`, `left_arm`, `right_arm`, `left_leg` y `right_leg`.
 
 ## Ejecutar desde código
 
@@ -92,15 +34,15 @@ python main.py
 ## Flujo de uso
 
 1. Conecta la webcam.
-2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento. Ajusta por separado los FPS de la vista previa; la cámara no se fuerza a 60 FPS.
+2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento. Ajusta los FPS de vista previa según prefieras.
 3. Carga tu plantilla humana .miobject.
-4. Define la duración y los FPS. Activa **Capturar desplazamiento del cuerpo** para animar también la posición global; ajusta la escala en unidades de Mine-imator por metro si el desplazamiento queda demasiado grande o pequeño.
-5. Colócate de cuerpo completo dentro del encuadre y mantén tu postura inicial durante la cuenta regresiva.
+4. Define la duración y los FPS de exportación.
+5. Colócate de cuerpo completo dentro del encuadre. Evita que hombros, codos, muñecas, caderas, rodillas y tobillos queden ocultos.
 6. Pulsa **Grabar**. Se mostrará 3, 2, 1 y después comenzará la captura.
-7. La grabación termina automáticamente al llegar a la duración elegida; también puedes detenerla antes.
+7. Al terminar, la aplicación procesa las muestras pendientes.
 8. Exporta un nuevo .miobject.
 
-La primera pose estable se utiliza como referencia neutra. La aplicación conserva los valores base de rotación de la plantilla y aplica cambios relativos respecto a esa postura, en lugar de forzar los ejes de las extremidades a cero.
+El retargeting no mueve la raíz ni intenta desplazar al personaje por la escena. Cada articulación se calcula directamente a partir de la dirección de su segmento y, en codos y rodillas, de su ángulo de flexión. La posición del personaje sigue siendo la de la plantilla; cualquier animación global que ya exista en la pista `char` se reduce al primer transform.
 
 ## Compilación de Windows
 
@@ -108,7 +50,7 @@ El workflow **Compilar Windows** se ejecuta con cada actualización de main y ta
 
 ## Precisión y límites
 
-MediaPipe estima coordenadas 3D desde una cámara monocular; no mide profundidad real. Los resultados pueden perder precisión si una articulación queda oculta, hay poca luz o la persona gira mucho respecto a la cámara. La versión 0.2.0 mejora la referencia corporal, los valores de reposo y el filtrado, pero el retargeting debe seguir validándose en Mine-imator con capturas reales.
+MediaPipe estima coordenadas 3D desde una cámara monocular; no mide profundidad real. Los resultados pueden perder precisión si una articulación queda oculta, hay poca luz o la persona gira mucho respecto a la cámara. El retargeting conserva la correspondencia directa de los landmarks visibles; no inventa desplazamiento global ni giros de raíz para suplir datos que no se midieron.
 
 ## Tecnologías
 

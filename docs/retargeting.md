@@ -1,61 +1,56 @@
 # Retargeting de movimiento
 
-## Qué se lee de la cámara
+## Principio de conversión
 
-Cada muestra contiene landmarks 3D estimados por MediaPipe, landmarks 2D normalizados de la imagen, el tamaño de la imagen y el instante monotónico en que se capturó el frame. La exportación respeta esos timestamps y remuestrea la trayectoria al FPS de Mine-imator elegido.
+El retargeting vuelve al mapeo directo de la primera versión. Cada pista de Mine-imator recibe ángulos calculados desde sus propios landmarks de MediaPipe. No se reconstruye una jerarquía 3D completa mediante cuaterniones, no se utiliza una pose neutra para restar orientaciones y no se compensa el movimiento de una articulación contra el de su padre.
 
-La estabilización, cuando está activa, filtra una sola vez los landmarks 2D y 3D con One Euro Filter. No se vuelve a filtrar la curva de ángulos después del retargeting, para no añadir un segundo retraso ni atenuar gestos rápidos.
+El objetivo es que el movimiento visible en el esqueleto de cámara llegue a los canales de articulación correspondientes, sin añadir traslación o giro global del personaje.
 
-## Jerarquía del rig
+## Correspondencia de landmarks
 
-La jerarquía se obtiene de los identificadores y de `parent` dentro del `.miobject`:
-
-| Pista de Mine-imator | Landmarks de referencia | Qué se anima |
+| Pista de Mine-imator | Landmarks | Canales animados |
 |---|---|---|
-| `char` | Centro de caderas y línea de caderas | Posición global y orientación |
-| `body` | Hombros y caderas | Inclinación, giro y torsión del torso |
-| `head` | Nariz y laterales de la cabeza | Giro local de cabeza |
-| `left_arm` / `right_arm` | Hombro, codo y muñeca | Orientación 3D y flexión de codo |
-| `left_leg` / `right_leg` | Cadera, rodilla y tobillo | Orientación 3D y flexión de rodilla |
+| `body` | Hombros y caderas | `ROT_X`, `ROT_Y`, `ROT_Z` |
+| `head` | Nariz y laterales de la cabeza | `ROT_X`, `ROT_Y`, `ROT_Z` |
+| `left_arm` | Hombro 11, codo 13, muñeca 15 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
+| `right_arm` | Hombro 12, codo 14, muñeca 16 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
+| `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
+| `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
 
-Los rigs incluidos como referencia tienen el torso como hijo de `char`, cabeza y brazos como hijos del torso y piernas como hijos de `char`. El exportador conserva los valores estáticos y los ángulos de reposo que encuentra en la plantilla.
+## Orientación de brazos y piernas
 
-## Orientación de raíz y piernas
+Para cada segmento principal se obtiene el vector desde la articulación de origen hasta la siguiente articulación. La inclinación se calcula directamente:
 
-La orientación global de pelvis se calcula únicamente desde la línea que une las dos caderas. Las rodillas y los tobillos no intervienen en ese cálculo porque se mueven de forma alternada durante una caminata. Así se evita convertir el ciclo de pasos en un giro ficticio de todo el personaje.
+`ROT_X = atan2(\Delta z, \Delta y \cdot downSign)`
 
-Las piernas se resuelven después en el marco local de la raíz. Brazos y cabeza se resuelven en el marco del torso cuando la jerarquía los hace depender de él.
+`ROT_Z = atan2(\Delta x, \Delta y \cdot downSign)`
 
-## Orientación de las extremidades
+El signo vertical `downSign` se infiere de la dirección de las espinillas visibles, para admitir ambas convenciones del eje Y de MediaPipe. El mapeo directo usa `ROT_Y = 0` en los miembros; no intenta inventar torsión axial que el esqueleto de 33 landmarks no entrega de forma fiable.
 
-Para cada brazo o pierna se usan los dos segmentos de la articulación:
-- Brazo: hombro a codo y codo a muñeca.
-- Pierna: cadera a rodilla y rodilla a tobillo.
+La flexión se calcula por separado con los tres puntos de cada extremidad. Se obtiene el ángulo interior entre los dos segmentos y se convierte en flexión como `180° - ánguloInterior`, limitada al rango admitido por el retargeter. Así, la orientación del brazo o pierna y la flexión del codo o rodilla son magnitudes separadas.
 
-Con ambos vectores se construye una base local a partir del eje del segmento superior y la normal del plano de flexión. De este modo, la orientación conserva la dirección y la torsión de la extremidad, mientras que la magnitud del ángulo del codo o la rodilla se exporta una sola vez en `BEND_ANGLE_X`, el canal utilizado por el rig de caminata proporcionado. El cambio de orientación se compone como cuaternión local con la rotación de reposo de la plantilla; no se suman componentes Euler por separado.
+## Torso y cabeza
 
-Cuando la extremidad está casi recta, su plano de flexión deja de estar bien definido. En ese caso se conserva la referencia anterior para reducir inversiones repentinas de 180 grados.
+El torso se orienta a partir del eje entre los puntos medios de hombros y caderas, y del eje entre ambos hombros. La cabeza se orienta a partir de la nariz y del eje entre orejas. Esas pistas siguen correspondiendo al movimiento capturado del torso y la cabeza, pero no modifican la pista global del personaje.
 
-## Desplazamiento global
+## Raíz y posición de escena
 
-Los landmarks 3D de MediaPipe están centrados en las caderas, por lo que no bastan por sí solos para medir el desplazamiento completo de la persona por la habitación. La traslación se estima combinando:
-- El centro de caderas 2D de la imagen para el movimiento horizontal y vertical en el encuadre.
-- La altura del cuerpo estimada en world landmarks frente a su tamaño en píxeles para aproximar la escala y el cambio relativo de profundidad.
+La pista `char` se congela en el primer transform que encuentre. Si la plantilla tenía keyframes de posición o rotación global, se conservan únicamente los valores del primer fotograma; si no tenía keyframes, se mantiene su `default_values`. No se exporta movimiento global de cámara a `char`.
 
-La traslación se escribe en `char.POS_X`, `char.POS_Y` y `char.POS_Z`. El valor inicial procede de `default_values` o del primer keyframe de la raíz. El control **Escala de desplazamiento** ajusta las unidades de Mine-imator por metro estimado. La profundidad utiliza un campo de visión vertical aproximado; por eso debe calibrarse con la cámara y no representa una medición óptica exacta.
+## Conservación de la plantilla
 
-Si los landmarks necesarios para medir la posición quedan ocultos durante unos fotogramas, se conserva la última posición válida para evitar que el personaje salte al punto de inicio.
+El exportador conserva propiedades que no anima, incluidas las posiciones de partes como `POS_Z`, referencias de textura como `TEXTURE_OBJ`, y pistas accesorias. La jerarquía existente en el `.miobject` no se reescribe.
 
-## Interpolación y keyframes
+## Keyframes y suavizado
 
-Durante REC cada frame de cámara se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La inferencia procesa todos los frames pendientes después de detener la toma; la exportación no se habilita hasta que la cola se vacía. La cola admite hasta 18.000 frames (cinco minutos a 60 FPS).
+Las muestras se ordenan por su timestamp y se interpolan al FPS de exportación. La optimización retiene el primer y último fotograma, agrega claves al superar aproximadamente 1° de cambio y limita el espacio entre claves a 0.20 segundos. Desactivar la optimización escribe todos los fotogramas.
 
-Las muestras se ordenan por tiempo de captura y se interpolan al FPS de exportación. La opción de optimización conserva el primer y último fotograma, introduce claves por cambio angular y limita el intervalo máximo entre claves. Desactivarla escribe todos los fotogramas.
+La opción de estabilización aplica el suavizado de ángulos del exportador original. Se puede desactivar para conservar más literalmente las variaciones detectadas.
 
-El filtro de landmarks es la única etapa de estabilización; no se aplica otro suavizado recursivo sobre las rotaciones exportadas.
+## Captura de cámara
+
+Durante REC cada frame se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La inferencia procesa los frames pendientes después de detener la toma; la exportación se habilita cuando la cola se vacía. La cola admite hasta 18.000 frames, equivalente a cinco minutos a 60 FPS.
 
 ## Límites de una sola cámara
 
-Una webcam RGB no mide profundidad absoluta, no observa las articulaciones que quedan detrás del cuerpo y no puede reconstruir con exactitud los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. La traslación lateral y vertical es relativa al encuadre; la profundidad es una estimación basada en la escala aparente. Oclusiones, ropa holgada, perspectiva, iluminación, movimiento rápido y límites del modelo pueden producir errores antes de que el retargeting reciba los datos.
-
-Por esa razón, el objetivo del retargeter es conservar fielmente las articulaciones visibles y evitar errores de jerarquía o exportación; no puede garantizar identidad geométrica perfecta entre una captura monocular y un rig 3D.
+Una webcam RGB no mide profundidad absoluta, no observa articulaciones que quedan detrás del cuerpo y no reconstruye los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. Oclusiones, ropa holgada, perspectiva, iluminación y movimiento rápido pueden producir errores antes de que el retargeting reciba los datos. El conversor evita añadir un desplazamiento global o rotación de raíz cuando esos movimientos no forman parte de lo que el usuario quiere exportar.
