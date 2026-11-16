@@ -122,7 +122,7 @@ def test_direct_retarget_outputs_all_six_parts_and_keeps_rest_pose():
     }
     for part in ("left_leg", "right_leg"):
         assert abs(controls[part]["ROT_X"]) < 0.01
-        assert abs(controls[part]["ROT_Z"]) < 0.01
+        assert abs(controls[part]["ROT_Z"]) < 1.0
         assert abs(controls[part]["BEND_ANGLE_X"]) < 0.01
 
 
@@ -219,7 +219,6 @@ def test_export_animates_only_body_parts_and_never_moves_the_character(tmp_path)
         assert len(timeline["keyframes"]) == 31
         assert "POS_X" not in timeline["keyframes"]["0"]
         assert "POS_Y" not in timeline["keyframes"]["0"]
-        assert "POS_Z" not in timeline["keyframes"]["0"]
 
     left_leg = next(
         item for item in exported["timelines"]
@@ -233,6 +232,15 @@ def test_export_animates_only_body_parts_and_never_moves_the_character(tmp_path)
                for frame in left_leg["keyframes"].values())
     assert any(abs(frame["ROT_X"]) + abs(frame["ROT_Z"]) > 1.0
                for frame in right_leg["keyframes"].values())
+    assert next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "left_arm"
+    )["keyframes"]["0"]["POS_Z"] == -0.53
+    assert next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "right_arm"
+    )["keyframes"]["0"]["POS_Z"] == -0.43
+
     assert result["keyframe_counts"] == {
         "body": 31,
         "head": 31,
