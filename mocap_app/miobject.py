@@ -10,8 +10,8 @@ from .retarget import calculate_pose_controls
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 PART_FIELDS = {
-    "body": ("ROT_X", "ROT_Y", "ROT_Z"),
-    "head": ("ROT_X", "ROT_Y", "ROT_Z"),
+    "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
+    "head": ("ROT_X", "ROT_Z"),
     "left_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "left_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
@@ -119,6 +119,11 @@ def _unwrap_degrees(values: list[float]) -> list[float]:
     return output
 
 
+def _angle_difference(value: float, reference: float) -> float:
+    """Return the shortest signed angular offset from the calibrated stance."""
+    return (float(value) - float(reference) + 180.0) % 360.0 - 180.0
+
+
 def _interpolate(times: list[float], values: list[float], target: float) -> float:
     if len(times) == 1 or target <= times[0]:
         return values[0]
@@ -189,9 +194,10 @@ def export_miobject(
     if not samples:
         raise MiobjectError("No hay muestras de pose para exportar.")
 
-    # Use the proven direct landmark-to-joint mapping from the first version.
-    # Each limb is driven by its own segment direction and its own bend angle;
-    # there is no global root track, positional motion, or hierarchy compensation.
+    # The camera coordinate frame is not Mine-imator's local rig frame.
+    # Convert landmarks to native part channels, then calibrate each part from
+    # its first valid sample. This makes the captured starting stance the rest
+    # pose instead of exporting absolute camera-space offsets (often near 180°).
     static_part_fields = _template_static_part_fields(data)
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, pose in samples:
@@ -208,6 +214,27 @@ def export_miobject(
     for timestamp, controls in converted:
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
+
+    # Calibrate every part/channel independently so a joint that becomes
+    # visible later also starts from its own first reliable observation.
+    reference: dict[str, dict[str, float]] = {}
+    for _, controls in converted:
+        for part, fields in controls.items():
+            part_reference = reference.setdefault(part, {})
+            for field, value in fields.items():
+                part_reference.setdefault(field, float(value))
+
+    calibrated: list[tuple[float, dict[str, dict[str, float]]]] = []
+    for timestamp, controls in converted:
+        relative_controls: dict[str, dict[str, float]] = {}
+        for part, fields in controls.items():
+            part_reference = reference.get(part, {})
+            relative_controls[part] = {
+                field: _angle_difference(value, part_reference.get(field, value))
+                for field, value in fields.items()
+            }
+        calibrated.append((timestamp, relative_controls))
+    converted = calibrated
     source_times = [item[0] for item in converted]
 
     if duration_seconds is None:
