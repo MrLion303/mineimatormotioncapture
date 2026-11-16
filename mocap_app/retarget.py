@@ -64,10 +64,11 @@ def _limb_controls(pose, start_index, joint_index, end_index, down_sign):
 
 
 def calculate_pose_controls(pose: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """Map MediaPipe world landmarks to Mine-imator human body-part controls.
+    """Map MediaPipe world landmarks to Mine-imator's native human channels.
 
-    Rotation values are an initial monocular retargeting estimate. The vertical
-    sign is inferred from the shins so it works with either world-Y convention.
+    The values are absolute measurements in the camera coordinate frame. The
+    exporter calibrates each part against its first valid sample before writing
+    keyframes, so a neutral starting stance becomes the character's rest pose.
     """
     left_knee = _point(pose, 25)
     left_ankle = _point(pose, 27)
@@ -88,15 +89,22 @@ def calculate_pose_controls(pose: dict[str, Any]) -> dict[str, dict[str, float]]
     left_hip = _point(pose, 23)
     right_hip = _point(pose, 24)
 
-    if all(point is not None for point in (left_shoulder, right_shoulder, left_hip, right_hip)):
+    if all(point is not None for point in (
+        left_shoulder, right_shoulder, left_hip, right_hip
+    )):
         shoulder_mid = _midpoint(left_shoulder, right_shoulder)
         hip_mid = _midpoint(left_hip, right_hip)
         shoulder_axis = _subtract(right_shoulder, left_shoulder)
         torso_axis = _subtract(shoulder_mid, hip_mid)
+
+        # Mine-imator's human torso is animated with the three native bend
+        # channels. Feeding this orientation into ROT_X/Y/Z makes a standing
+        # user export values close to 180 degrees and twists the whole torso.
+        torso_vertical = -torso_axis[1] * down_sign
         controls["body"] = {
-            "ROT_X": degrees(atan2(torso_axis[2], max(abs(torso_axis[1]), 1e-5))),
-            "ROT_Y": degrees(atan2(-shoulder_axis[2], shoulder_axis[0])),
-            "ROT_Z": degrees(atan2(shoulder_axis[1], shoulder_axis[0])),
+            "BEND_ANGLE_X": degrees(atan2(torso_axis[2], torso_vertical)),
+            "BEND_ANGLE_Y": degrees(atan2(-shoulder_axis[2], shoulder_axis[0])),
+            "BEND_ANGLE_Z": degrees(atan2(torso_axis[0], torso_vertical)),
         }
 
     left_arm = _limb_controls(pose, 11, 13, 15, down_sign)
@@ -120,10 +128,15 @@ def calculate_pose_controls(pose: dict[str, Any]) -> dict[str, dict[str, float]]
         ear_mid = _midpoint(left_ear, right_ear)
         ear_axis = _subtract(right_ear, left_ear)
         head_direction = _subtract(nose, ear_mid)
+        # The reference human animates the head on X and Z. A separate Y
+        # rotation is not available in that demonstrated head rig.
         controls["head"] = {
-            "ROT_X": degrees(atan2(head_direction[1], max(abs(head_direction[2]), 1e-5))),
-            "ROT_Y": degrees(atan2(-ear_axis[2], ear_axis[0])),
-            "ROT_Z": degrees(atan2(ear_axis[1], ear_axis[0])),
+            "ROT_X": degrees(
+                atan2(head_direction[1] * down_sign, max(abs(head_direction[2]), 1e-5))
+            ),
+            "ROT_Z": degrees(
+                atan2(ear_axis[1] * down_sign, max(abs(ear_axis[0]), 1e-5))
+            ),
         }
 
     return controls
