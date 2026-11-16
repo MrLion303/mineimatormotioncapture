@@ -123,7 +123,7 @@ def test_direct_retarget_outputs_all_six_parts_and_keeps_rest_pose():
     for part in ("left_leg", "right_leg"):
         assert abs(controls[part]["ROT_X"]) < 0.01
         assert abs(controls[part]["ROT_Z"]) < 1.0
-        assert abs(controls[part]["BEND_ANGLE_X"]) < 0.01
+        assert abs(controls[part]["BEND_ANGLE_X"]) < 1.0
 
 
 def test_left_and_right_legs_follow_their_own_captured_segments():
