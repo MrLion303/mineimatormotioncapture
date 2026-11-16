@@ -8,7 +8,11 @@ from mocap_app.miobject import (
     _template_static_part_fields,
     export_miobject,
 )
-from mocap_app.retarget import calculate_pose_controls
+from mocap_app.retarget import (
+    _quaternion_from_euler_xyz,
+    _quaternion_to_euler_xyz,
+    calculate_pose_controls,
+)
 
 
 def standing_pose():
@@ -301,3 +305,14 @@ def test_full_body_turn_rotates_body_and_root_parented_legs_together():
     assert abs(abs(controls["body"]["ROT_Y"]) - 55.0) < 0.5
     assert abs(abs(controls["left_leg"]["ROT_Y"]) - 55.0) < 0.5
     assert abs(abs(controls["right_leg"]["ROT_Y"]) - 55.0) < 0.5
+
+
+def test_euler_conversion_stays_continuous_when_yaw_crosses_90_degrees():
+    pose_80 = _quaternion_from_euler_xyz((0.0, 80.0, 0.0))
+    pose_100 = _quaternion_from_euler_xyz((0.0, 100.0, 0.0))
+    previous = _quaternion_to_euler_xyz(pose_80)
+    current = _quaternion_to_euler_xyz(pose_100, reference_angles=previous)
+
+    assert abs(current[0]) < 0.1
+    assert abs(current[1] - 100.0) < 0.1
+    assert abs(current[2]) < 0.1

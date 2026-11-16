@@ -313,6 +313,7 @@ def export_miobject(
     body_bend_axes = _template_body_bend_axes(data)
 
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
+    previous_controls: dict[str, dict[str, float]] = {}
     for timestamp, pose in stabilized:
         controls = calculate_pose_controls(
             pose,
@@ -320,9 +321,11 @@ def export_miobject(
             base_values=baselines,
             part_parents=part_parents,
             body_bend_axes=body_bend_axes,
+            previous_controls=previous_controls,
         )
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
+            previous_controls.update(controls)
     if not converted:
         raise MiobjectError(
             "No hay poses válidas para exportar. Comprueba que se vean los hombros y las caderas."

@@ -2,6 +2,10 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.6
+
+- Conversión de cuaterniones a Euler con continuidad temporal: el retargeter escoge la rama equivalente más cercana al fotograma anterior y evita saltos de 180° al girar más allá de 90°.
+
 ## Mejoras de la versión 0.2.5
 
 - El exportador conserva las propiedades de rig que no controla el retargeting, como `POS_Z` y `TEXTURE_OBJ`.

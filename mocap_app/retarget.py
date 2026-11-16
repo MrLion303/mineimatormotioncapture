@@ -205,7 +205,11 @@ def _quaternion_from_euler_xyz(angles: tuple[float, float, float]) -> Quaternion
     ))
 
 
-def _quaternion_to_euler_xyz(q: Quaternion) -> tuple[float, float, float]:
+def _quaternion_to_euler_xyz(
+    q: Quaternion,
+    reference_angles: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float]:
+    """Convert to Euler angles while choosing the equivalent branch nearest the previous frame."""
     w, x, y, z = _quaternion_normalize(q)
 
     angle_x = atan2(
@@ -218,7 +222,30 @@ def _quaternion_to_euler_xyz(q: Quaternion) -> tuple[float, float, float]:
         2.0 * (w * z + x * y),
         1.0 - 2.0 * (y * y + z * z),
     )
-    return (degrees(angle_x), degrees(angle_y), degrees(angle_z))
+    primary = tuple(degrees(value) for value in (angle_x, angle_y, angle_z))
+
+    if reference_angles is None:
+        return primary
+
+    # XYZ Euler rotations have two equivalent representations. The principal
+    # branch can jump 180 degrees in X and Z when Y crosses +/-90 degrees.
+    alternate_y = 180.0 - primary[1] if primary[1] >= 0.0 else -180.0 - primary[1]
+    alternate = (primary[0] + 180.0, alternate_y, primary[2] + 180.0)
+
+    candidates = []
+    for candidate in (primary, alternate):
+        adjusted = tuple(
+            value + 360.0 * round((reference - value) / 360.0)
+            for value, reference in zip(candidate, reference_angles)
+        )
+        candidates.append(adjusted)
+    return min(
+        candidates,
+        key=lambda candidate: sum(
+            (value - reference) ** 2
+            for value, reference in zip(candidate, reference_angles)
+        ),
+    )
 
 
 def _quaternion_from_basis(basis: Basis) -> Quaternion:
@@ -296,17 +323,41 @@ def _base_rotation(
     )
 
 
+def _previous_rotation_delta(
+    part: str,
+    base_values: dict[str, dict[str, float]] | None,
+    previous_controls: dict[str, dict[str, float]] | None,
+    body_bend_axes: tuple[str, ...] = (),
+) -> tuple[float, float, float] | None:
+    previous = (previous_controls or {}).get(part)
+    if not previous:
+        return None
+
+    base = (base_values or {}).get(part, {})
+    x_field = "BEND_ANGLE_X" if part == "body" and "BEND_ANGLE_X" in body_bend_axes else "ROT_X"
+    z_field = "BEND_ANGLE_Z" if part == "body" and "BEND_ANGLE_Z" in body_bend_axes else "ROT_Z"
+    return (
+        float(previous.get(x_field, base.get(x_field, 0.0))) - float(base.get(x_field, 0.0)),
+        float(previous.get("ROT_Y", base.get("ROT_Y", 0.0))) - float(base.get("ROT_Y", 0.0)),
+        float(previous.get(z_field, base.get(z_field, 0.0))) - float(base.get(z_field, 0.0)),
+    )
+
+
 def _apply_rotation_delta(
     base_values: dict[str, dict[str, float]] | None,
     part: str,
     delta: Quaternion,
+    previous_delta: tuple[float, float, float] | None = None,
 ) -> dict[str, float]:
     # Mine-imator's human limbs carry baked-in rest angles (for example,
     # left arm ROT_Y around +120 degrees and right arm around -60 degrees).
     # Add local motion offsets to those values instead of composing a world
     # quaternion with the baked Euler pose, which can create Euler flips.
     base_x, base_y, base_z = _base_rotation(base_values, part)
-    delta_x, delta_y, delta_z = _quaternion_to_euler_xyz(delta)
+    delta_x, delta_y, delta_z = _quaternion_to_euler_xyz(
+        delta,
+        reference_angles=previous_delta,
+    )
     return {
         "ROT_X": base_x + delta_x,
         "ROT_Y": base_y + delta_y,
@@ -343,6 +394,7 @@ def _limb_controls(
     indices: tuple[int, int, int],
     base_values: dict[str, dict[str, float]] | None,
     part_parents: dict[str, str] | None = None,
+    previous_controls: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, float] | None:
     current = _limb_points(pose, indices)
     reference = _limb_points(reference_pose, indices)
@@ -373,7 +425,12 @@ def _limb_controls(
         if inherits_root
         else local_delta
     )
-    result = _apply_rotation_delta(base_values, part, delta_q)
+    result = _apply_rotation_delta(
+        base_values,
+        part,
+        delta_q,
+        previous_delta=_previous_rotation_delta(part, base_values, previous_controls),
+    )
 
     current_bend = _bend_angle(current[0], current[1], current[2])
     reference_bend = _bend_angle(reference[0], reference[1], reference[2])
@@ -391,6 +448,7 @@ def calculate_pose_controls(
     base_values: dict[str, dict[str, float]] | None = None,
     part_parents: dict[str, str] | None = None,
     body_bend_axes: tuple[str, ...] = (),
+    previous_controls: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Calculate local rotations using the actual Mine-imator part hierarchy."""
     reference_pose = reference_pose or pose
@@ -405,10 +463,18 @@ def calculate_pose_controls(
     root_delta = _relative_basis_rotation(reference_root, current_root)
 
     controls: dict[str, dict[str, float]] = {}
-    body_values = _apply_rotation_delta(base_values, "body", body_delta)
+    body_previous_delta = _previous_rotation_delta(
+        "body", base_values, previous_controls, body_bend_axes
+    )
+    body_values = _apply_rotation_delta(
+        base_values, "body", body_delta, previous_delta=body_previous_delta
+    )
     if body_bend_axes:
         base_body = (base_values or {}).get("body", {})
-        delta_x, _delta_y, delta_z = _quaternion_to_euler_xyz(body_delta)
+        delta_x, _delta_y, delta_z = _quaternion_to_euler_xyz(
+            body_delta,
+            reference_angles=body_previous_delta,
+        )
         if "BEND_ANGLE_X" in body_bend_axes:
             body_values["BEND_ANGLE_X"] = float(base_body.get("BEND_ANGLE_X", 0.0)) + delta_x
             body_values["ROT_X"] = float(base_body.get("ROT_X", 0.0))
@@ -430,7 +496,14 @@ def calculate_pose_controls(
         head_delta = _relative_basis_rotation(reference_head_local, current_head_local)
         if head_parent != "body":
             head_delta = _quaternion_multiply(root_delta, head_delta)
-        controls["head"] = _apply_rotation_delta(base_values, "head", head_delta)
+        controls["head"] = _apply_rotation_delta(
+            base_values,
+            "head",
+            head_delta,
+            previous_delta=_previous_rotation_delta(
+                "head", base_values, previous_controls
+            ),
+        )
 
     limb_specs = (
         ("left_arm", (11, 13, 15)),
@@ -451,6 +524,7 @@ def calculate_pose_controls(
             indices,
             base_values,
             part_parents=part_parents,
+            previous_controls=previous_controls,
         )
         if limb is not None:
             controls[part] = limb
