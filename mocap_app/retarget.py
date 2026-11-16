@@ -97,6 +97,35 @@ def _body_basis(pose: dict[str, Any]) -> Basis | None:
     return (x_axis, y_axis, z_axis)
 
 
+
+def _root_basis(pose: dict[str, Any]) -> Basis | None:
+    """Estimate pelvis/root orientation independently from the upper torso."""
+    left_hip = _point(pose, 23)
+    right_hip = _point(pose, 24)
+    left_knee = _point(pose, 25) or _point(pose, 27)
+    right_knee = _point(pose, 26) or _point(pose, 28)
+    if any(point is None for point in (left_hip, right_hip, left_knee, right_knee)):
+        return None
+
+    hip_mid = _midpoint(left_hip, right_hip)
+    knee_mid = _midpoint(left_knee, right_knee)
+    hip_width = _sub(right_hip, left_hip)
+    knee_width = _sub(right_knee, left_knee)
+    x_axis = _normalize(_add(hip_width, knee_width)) or _normalize(hip_width)
+    if x_axis is None:
+        return None
+
+    up_raw = _sub(hip_mid, knee_mid)
+    up_orthogonal = _sub(up_raw, _scale(x_axis, _dot(up_raw, x_axis)))
+    y_axis = _normalize(up_orthogonal)
+    if y_axis is None:
+        return None
+
+    z_axis = _normalize(_cross(x_axis, y_axis))
+    if z_axis is None:
+        return None
+    return (x_axis, y_axis, z_axis)
+
 def _to_local(vector: Vector, basis: Basis) -> Vector:
     return (
         _dot(vector, basis[0]),
@@ -307,21 +336,43 @@ def _limb_controls(
     reference_pose: dict[str, Any],
     current_body: Basis,
     reference_body: Basis,
+    current_root: Basis,
+    reference_root: Basis,
+    root_delta: Quaternion,
     part: str,
     indices: tuple[int, int, int],
     base_values: dict[str, dict[str, float]] | None,
+    part_parents: dict[str, str] | None = None,
 ) -> dict[str, float] | None:
     current = _limb_points(pose, indices)
     reference = _limb_points(reference_pose, indices)
     if current is None or reference is None:
         return None
 
-    current_vector = _to_local(_sub(current[1], current[0]), current_body)
-    reference_vector = _to_local(_sub(reference[1], reference[0]), reference_body)
+    default_parent = "body" if part in ("left_arm", "right_arm") else "root"
+    parent_part = (part_parents or {}).get(part, default_parent)
+    if parent_part == "body":
+        current_parent = current_body
+        reference_parent = reference_body
+        inherits_root = False
+    else:
+        current_parent = current_root
+        reference_parent = reference_root
+        inherits_root = True
+
+    current_vector = _to_local(_sub(current[1], current[0]), current_parent)
+    reference_vector = _to_local(_sub(reference[1], reference[0]), reference_parent)
     if _length(current_vector) < 1e-4 or _length(reference_vector) < 1e-4:
         return None
 
-    delta_q = _quaternion_between_vectors(reference_vector, current_vector)
+    local_delta = _quaternion_between_vectors(reference_vector, current_vector)
+    # Legs are direct children of the character root in the supplied rigs.
+    # They inherit pelvis yaw, but do not compensate for a torso-only twist.
+    delta_q = (
+        _quaternion_multiply(root_delta, local_delta)
+        if inherits_root
+        else local_delta
+    )
     result = _apply_rotation_delta(base_values, part, delta_q)
 
     current_bend = _bend_angle(current[0], current[1], current[2])
@@ -338,29 +389,36 @@ def calculate_pose_controls(
     pose: dict[str, Any],
     reference_pose: dict[str, Any] | None = None,
     base_values: dict[str, dict[str, float]] | None = None,
+    part_parents: dict[str, str] | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Calculate local Mine-imator rotations relative to a neutral body pose.
-
-    The torso defines the coordinate frame for head and limb movement. The
-    template's first keyframe supplies each part's rest rotation, preventing
-    default arm and leg offsets from being replaced with zero.
-    """
+    """Calculate local rotations using the actual Mine-imator part hierarchy."""
     reference_pose = reference_pose or pose
     current_body = _body_basis(pose)
     reference_body = _body_basis(reference_pose)
     if current_body is None or reference_body is None:
         return {}
 
-    controls: dict[str, dict[str, float]] = {}
+    current_root = _root_basis(pose) or current_body
+    reference_root = _root_basis(reference_pose) or reference_body
     body_delta = _relative_basis_rotation(reference_body, current_body)
+    root_delta = _relative_basis_rotation(reference_root, current_root)
+
+    controls: dict[str, dict[str, float]] = {}
     controls["body"] = _apply_rotation_delta(base_values, "body", body_delta)
 
     current_head = _head_basis(pose)
     reference_head = _head_basis(reference_pose)
     if current_head is not None and reference_head is not None:
-        current_head_local = _basis_in_parent(current_head, current_body)
-        reference_head_local = _basis_in_parent(reference_head, reference_body)
+        head_parent = (part_parents or {}).get("head", "body")
+        if head_parent == "body":
+            current_head_local = _basis_in_parent(current_head, current_body)
+            reference_head_local = _basis_in_parent(reference_head, reference_body)
+        else:
+            current_head_local = _basis_in_parent(current_head, current_root)
+            reference_head_local = _basis_in_parent(reference_head, reference_root)
         head_delta = _relative_basis_rotation(reference_head_local, current_head_local)
+        if head_parent != "body":
+            head_delta = _quaternion_multiply(root_delta, head_delta)
         controls["head"] = _apply_rotation_delta(base_values, "head", head_delta)
 
     limb_specs = (
@@ -375,9 +433,13 @@ def calculate_pose_controls(
             reference_pose,
             current_body,
             reference_body,
+            current_root,
+            reference_root,
+            root_delta,
             part,
             indices,
             base_values,
+            part_parents=part_parents,
         )
         if limb is not None:
             controls[part] = limb

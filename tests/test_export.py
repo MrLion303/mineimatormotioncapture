@@ -1,6 +1,11 @@
 import json
+import math
 
-from mocap_app.miobject import _select_keyframes, export_miobject
+from mocap_app.miobject import (
+    _select_keyframes,
+    _template_part_parents,
+    export_miobject,
+)
 from mocap_app.retarget import calculate_pose_controls
 
 
@@ -39,13 +44,20 @@ def make_template(path):
     }
     timelines = [
         {"id": "folder", "type": "folder", "keyframes": {"0": {"ROT_Y": 80}, "30": {"ROT_Y": 120}}},
-        {"id": "character", "type": "char", "keyframes": {"0": {"POS_X": 0}}},
+        {"id": "character", "type": "char", "keyframes": {"0": {"ROT_Z": -80.0}}},
     ]
+    part_ids = {part: f"part-{index}" for index, part in enumerate(parts)}
     for index, (part, values) in enumerate(parts.items()):
+        parent = (
+            part_ids["body"]
+            if part in {"head", "left_arm", "right_arm"}
+            else "character"
+        )
         timelines.append({
-            "id": f"part-{index}",
+            "id": part_ids[part],
             "type": "bodypart",
             "model_part_name": part,
+            "parent": parent,
             "keyframes": {"0": values},
         })
     timelines.append({
@@ -55,8 +67,8 @@ def make_template(path):
         "keyframes": {},
     })
     template = {
-        "format": 34,
-        "created_in": "2.0 (Pre-release 7)",
+        "format": 35,
+        "created_in": "2.0.2 Community Build 1.0.0",
         "templates": [{"model": {"name": "human", "state": {"variant": "steve", "type": "slim"}}}],
         "timelines": timelines,
         "resources": [],
@@ -128,8 +140,10 @@ def test_export_preserves_template_rest_pose_and_group_transform(tmp_path):
     )
 
     exported = json.loads(output_path.read_text(encoding="utf-8"))
-    assert exported["format"] == 34
+    assert exported["format"] == 35
     assert exported["templates"][0]["model"]["name"] == "human"
+    character = next(item for item in exported["timelines"] if item["type"] == "char")
+    assert character["keyframes"] == {"0": {"ROT_Z": -80.0}}
     folder = next(item for item in exported["timelines"] if item["type"] == "folder")
     assert folder["keyframes"] == {"0": {"ROT_Y": 80.0}}
 
@@ -164,3 +178,83 @@ def test_export_rejects_empty_capture(tmp_path):
     make_template(template_path)
     with pytest.raises(MiobjectError):
         export_miobject(template_path, tmp_path / "out.miobject", [], fps=30)
+
+
+def rotate_pose_y(pose, angle_degrees):
+    angle = math.radians(angle_degrees)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    rotated = {key: value for key, value in pose.items()}
+    rotated_world = []
+    for point in pose["world"]:
+        x, y, z, *rest = point
+        rotated_world.append([
+            x * cosine + z * sine,
+            y,
+            -x * sine + z * cosine,
+            *rest,
+        ])
+    rotated["world"] = rotated_world
+    return rotated
+
+
+def test_template_hierarchy_detects_body_children_and_root_legs(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    make_template(template_path)
+    from mocap_app.miobject import load_template
+
+    parents = _template_part_parents(load_template(template_path))
+    assert parents["body"] == "root"
+    assert parents["head"] == "body"
+    assert parents["left_arm"] == "body"
+    assert parents["right_arm"] == "body"
+    assert parents["left_leg"] == "root"
+    assert parents["right_leg"] == "root"
+
+
+def test_legs_do_not_counter_rotate_when_only_torso_turns():
+    neutral = standing_pose()
+    turned = standing_pose()
+    angle = math.radians(65.0)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+
+    # Turn head, shoulders and arms while leaving pelvis and legs fixed.
+    for index in (0, 7, 8, 11, 12, 13, 14, 15, 16):
+        x, y, z, *rest = neutral["world"][index]
+        turned["world"][index] = [
+            x * cosine + z * sine,
+            y,
+            -x * sine + z * cosine,
+            *rest,
+        ]
+
+    parents = {
+        "body": "root",
+        "head": "body",
+        "left_arm": "body",
+        "right_arm": "body",
+        "left_leg": "root",
+        "right_leg": "root",
+    }
+    controls = calculate_pose_controls(turned, neutral, part_parents=parents)
+    assert abs(controls["body"]["ROT_Y"]) > 20.0
+    assert abs(controls["left_leg"]["ROT_Y"]) < 0.1
+    assert abs(controls["right_leg"]["ROT_Y"]) < 0.1
+
+
+def test_full_body_turn_rotates_body_and_root_parented_legs_together():
+    neutral = standing_pose()
+    turned = rotate_pose_y(neutral, 55.0)
+    parents = {
+        "body": "root",
+        "head": "body",
+        "left_arm": "body",
+        "right_arm": "body",
+        "left_leg": "root",
+        "right_leg": "root",
+    }
+    controls = calculate_pose_controls(turned, neutral, part_parents=parents)
+    assert abs(abs(controls["body"]["ROT_Y"]) - 55.0) < 0.5
+    assert abs(abs(controls["left_leg"]["ROT_Y"]) - 55.0) < 0.5
+    assert abs(abs(controls["right_leg"]["ROT_Y"]) - 55.0) < 0.5

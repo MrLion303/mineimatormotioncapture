@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
-from .camera import CameraWorker
+from .camera import CameraDevice, CameraWorker, enumerate_available_cameras
 from .miobject import MiobjectError, export_miobject, load_template
 
 
@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self.resize(1320, 900)
 
         self.camera_worker: CameraWorker | None = None
+        self.camera_devices: list[CameraDevice] = []
         self.camera_ready = False
         self._camera_switch_pending = False
         self.template_path: Path | None = None
@@ -219,15 +220,24 @@ class MainWindow(QMainWindow):
         capture_layout = capture_panel.layout()
 
         capture_layout.addWidget(self._field_label("DISPOSITIVO"))
+        camera_row = QHBoxLayout()
         self.camera_combo = QComboBox()
-        for index in range(6):
-            self.camera_combo.addItem(f"Cámara {index}", index)
+        self.camera_combo.setMinimumWidth(210)
         self.camera_combo.currentIndexChanged.connect(self._on_camera_selection_changed)
-        capture_layout.addWidget(self.camera_combo)
+        camera_row.addWidget(self.camera_combo, 1)
 
-        capture_layout.addWidget(self._field_label("CALIDAD DEL SEGUIMIENTO"))
+        self.refresh_camera_button = QPushButton("Actualizar")
+        self.refresh_camera_button.setObjectName("secondaryButton")
+        self.refresh_camera_button.setMinimumWidth(92)
+        self.refresh_camera_button.clicked.connect(self._refresh_camera_list)
+        camera_row.addWidget(self.refresh_camera_button)
+        capture_layout.addLayout(camera_row)
+        self._refresh_camera_list()
+
+        capture_layout.addWidget(self._field_label("MODELO DE SEGUIMIENTO"))
         self.quality_combo = QComboBox()
-        self.quality_combo.addItem("Full  ·  Más preciso", "full")
+        self.quality_combo.addItem("Full  ·  Equilibrado", "full")
+        self.quality_combo.addItem("Heavy  ·  Más exigente", "heavy")
         self.quality_combo.addItem("Lite  ·  Más ligero", "lite")
         self.quality_combo.setCurrentIndex(0)
         capture_layout.addWidget(self.quality_combo)
@@ -322,8 +332,8 @@ class MainWindow(QMainWindow):
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "Full ofrece más detalle; Lite consume menos recursos. "
-            "La profundidad de una webcam es estimada."
+            "Heavy es el modelo más exigente; Full equilibra calidad y velocidad, "
+            "y Lite prioriza rendimiento. La profundidad se estima con la webcam."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
@@ -647,6 +657,47 @@ class MainWindow(QMainWindow):
     def _set_status(self, message: str) -> None:
         self.status_label.setText(message)
 
+    def _refresh_camera_list(self) -> None:
+        if self.camera_worker is not None:
+            self._set_status("Desconecta la cámara antes de actualizar la lista.")
+            return
+
+        previous = self.camera_combo.currentData()
+        previous_key = (
+            (previous.index, previous.backend)
+            if isinstance(previous, CameraDevice)
+            else None
+        )
+        self.camera_combo.blockSignals(True)
+        self.camera_combo.clear()
+        self.camera_devices = enumerate_available_cameras()
+
+        selected_index = -1
+        for device in self.camera_devices:
+            display_name = f"{device.name}  ·  {device.backend_name}"
+            self.camera_combo.addItem(display_name, device)
+            if previous_key == (device.index, device.backend):
+                selected_index = self.camera_combo.count() - 1
+
+        if not self.camera_devices:
+            self.camera_combo.addItem("No se detectaron cámaras", None)
+        elif selected_index >= 0:
+            self.camera_combo.setCurrentIndex(selected_index)
+
+        self.camera_combo.blockSignals(False)
+        self.camera_combo.setEnabled(bool(self.camera_devices))
+        self.refresh_camera_button.setEnabled(True)
+
+        if self.camera_devices:
+            self._set_status(
+                f"Se detectaron {len(self.camera_devices)} cámara(s). "
+                "Selecciona el dispositivo por su nombre."
+            )
+        else:
+            self._set_status(
+                "No se detectaron cámaras. Conecta una webcam y pulsa Actualizar."
+            )
+
     def _toggle_camera(self) -> None:
         if self.camera_worker is not None:
             self._disconnect_camera()
@@ -657,9 +708,19 @@ class MainWindow(QMainWindow):
         if self.camera_worker is not None:
             return
 
-        camera_index = int(self.camera_combo.currentData())
+        device = self.camera_combo.currentData()
+        if not isinstance(device, CameraDevice):
+            self._set_status("No hay una cámara disponible para conectar.")
+            return
+
         model_variant = str(self.quality_combo.currentData())
-        worker = CameraWorker(camera_index, model_variant, self)
+        worker = CameraWorker(
+            device.index,
+            model_variant,
+            self,
+            camera_backend=device.backend,
+            camera_name=device.name,
+        )
         self.camera_worker = worker
         worker.pose_ready.connect(self._receive_pose)
         worker.preview_fps.connect(self._update_preview_fps)
@@ -678,17 +739,23 @@ class MainWindow(QMainWindow):
         self.camera_button.setText("Conectando...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
+        self.refresh_camera_button.setEnabled(False)
         self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTANDO")
-        self._set_status(f"Conectando a Cámara {camera_index}...")
+        self._set_status(f"Conectando a {device.name}...")
         worker.start()
 
     def _on_camera_selection_changed(self, _index: int) -> None:
         if self.state != "idle" or self.camera_worker is None or not self.camera_ready:
             return
 
-        selected_index = int(self.camera_combo.currentData())
-        if selected_index == self.camera_worker.camera_index:
+        device = self.camera_combo.currentData()
+        if not isinstance(device, CameraDevice):
+            return
+        if (
+            device.index == self.camera_worker.camera_index
+            and device.backend == self.camera_worker.camera_backend
+        ):
             return
 
         self._camera_switch_pending = True
@@ -701,7 +768,7 @@ class MainWindow(QMainWindow):
         self.camera_state_label.setText("CAMBIANDO")
         self.preview.clear()
         self.preview.setText(f"Conectando a Cámara {selected_index}...")
-        self._set_status(f"Cambiando a Cámara {selected_index}...")
+        self._set_status(f"Cambiando a {device.name}...")
         self.camera_worker.stop()
 
     def _camera_ready(self) -> None:
@@ -709,6 +776,7 @@ class MainWindow(QMainWindow):
         self.camera_button.setText("Desconectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(self.state == "idle")
+        self.refresh_camera_button.setEnabled(False)
         self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CONECTADA")
         self._update_actions()
@@ -729,9 +797,12 @@ class MainWindow(QMainWindow):
             self._camera_switch_pending = False
             self._last_preview_sequence = 0
             self.last_image = None
-            self._set_status(
-                f"Conectando a Cámara {int(self.camera_combo.currentData())}..."
+            device = self.camera_combo.currentData()
+            camera_name = (
+                device.name if isinstance(device, CameraDevice)
+                else "la cámara seleccionada"
             )
+            self._set_status(f"Conectando a {camera_name}...")
             self._start_camera_worker()
             return
 
@@ -743,7 +814,8 @@ class MainWindow(QMainWindow):
         self.pose_fps_label.setText("TRACK  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
-        self.camera_combo.setEnabled(True)
+        self.camera_combo.setEnabled(bool(self.camera_devices))
+        self.refresh_camera_button.setEnabled(True)
         self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self.record_button.setEnabled(False)
@@ -770,7 +842,8 @@ class MainWindow(QMainWindow):
         self.pose_fps_label.setText("TRACK  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
-        self.camera_combo.setEnabled(True)
+        self.camera_combo.setEnabled(bool(self.camera_devices))
+        self.refresh_camera_button.setEnabled(True)
         self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self._update_actions()
@@ -916,8 +989,11 @@ class MainWindow(QMainWindow):
         self.duration_spin.setEnabled(True)
         self.fps_spin.setEnabled(True)
         self.camera_combo.setEnabled(
-            self.state == "idle" and (self.camera_worker is None or self.camera_ready)
+            bool(self.camera_devices)
+            and self.state == "idle"
+            and (self.camera_worker is None or self.camera_ready)
         )
+        self.refresh_camera_button.setEnabled(self.camera_worker is None)
         self.quality_combo.setEnabled(self.camera_worker is None)
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")

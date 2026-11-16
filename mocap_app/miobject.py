@@ -80,6 +80,47 @@ def _first_keyframe_values(timeline: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def _template_part_parents(data: dict[str, Any]) -> dict[str, str]:
+    """Resolve the direct parent of every required body part."""
+    timelines = [
+        timeline
+        for timeline in data.get("timelines", [])
+        if isinstance(timeline, dict)
+    ]
+    by_id = {
+        str(timeline.get("id")): timeline
+        for timeline in timelines
+        if timeline.get("id") is not None
+    }
+    defaults = {
+        "body": "root",
+        "head": "body",
+        "left_arm": "body",
+        "right_arm": "body",
+        "left_leg": "root",
+        "right_leg": "root",
+    }
+    parents: dict[str, str] = {}
+    for timeline in timelines:
+        if timeline.get("type") != "bodypart":
+            continue
+        part = timeline.get("model_part_name")
+        if part not in REQUIRED_PARTS:
+            continue
+        parent_id = timeline.get("parent")
+        parent = by_id.get(str(parent_id)) if parent_id is not None else None
+        if parent is None:
+            parents[part] = defaults[part]
+        elif parent.get("type") == "char":
+            parents[part] = "root"
+        elif parent.get("type") == "bodypart":
+            parent_part = parent.get("model_part_name")
+            parents[part] = str(parent_part) if parent_part in REQUIRED_PARTS else defaults[part]
+        else:
+            parents[part] = defaults[part]
+    return parents
+
+
 def _template_baselines(data: dict[str, Any]) -> dict[str, dict[str, float]]:
     baselines: dict[str, dict[str, float]] = {}
     for timeline in data.get("timelines", []):
@@ -203,6 +244,7 @@ def export_miobject(
 
     reference_pose = _reference_pose(stabilized)
     baselines = _template_baselines(data)
+    part_parents = _template_part_parents(data)
 
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, pose in stabilized:
@@ -210,6 +252,7 @@ def export_miobject(
             pose,
             reference_pose=reference_pose,
             base_values=baselines,
+            part_parents=part_parents,
         )
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))

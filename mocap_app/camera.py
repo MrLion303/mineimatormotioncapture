@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import queue
+import sys
 import threading
 import time
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -13,6 +15,14 @@ from PySide6.QtGui import QImage
 
 
 MODEL_VARIANTS = {
+    "heavy": {
+        "label": "Heavy",
+        "url": (
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+            "pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
+        ),
+        "filename": "pose_landmarker_heavy.task",
+    },
     "full": {
         "label": "Full",
         "url": (
@@ -30,6 +40,76 @@ MODEL_VARIANTS = {
         "filename": "pose_landmarker_lite.task",
     },
 }
+
+@dataclass(frozen=True)
+class CameraDevice:
+    name: str
+    index: int
+    backend: int
+    backend_name: str
+
+
+def _camera_backend_name(backend: int) -> str:
+    try:
+        return str(cv2.videoio_registry.getBackendName(backend))
+    except Exception:
+        return "OpenCV"
+
+
+def enumerate_available_cameras() -> list[CameraDevice]:
+    """Return connected capture devices with their actual system names."""
+    try:
+        from cv2_enumerate_cameras import enumerate_cameras
+    except Exception:
+        enumerate_cameras = None
+
+    if sys.platform == "win32":
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF]
+    elif sys.platform == "darwin":
+        backends = [cv2.CAP_AVFOUNDATION]
+    else:
+        backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
+
+    if enumerate_cameras is not None:
+        for preferred_backend in backends:
+            try:
+                camera_infos = enumerate_cameras(preferred_backend)
+            except Exception:
+                continue
+            devices = []
+            for info in camera_infos:
+                backend = int(getattr(info, "backend", preferred_backend))
+                devices.append(
+                    CameraDevice(
+                        name=str(getattr(info, "name", "") or f"Cámara {info.index}"),
+                        index=int(info.index),
+                        backend=backend,
+                        backend_name=_camera_backend_name(backend),
+                    )
+                )
+            if devices:
+                return devices
+
+    # Fallback for systems where camera enumeration is unavailable.
+    for backend in backends:
+        devices = []
+        for index in range(10):
+            capture = cv2.VideoCapture(index, backend)
+            opened = capture.isOpened()
+            capture.release()
+            if opened:
+                devices.append(
+                    CameraDevice(
+                        name=f"Cámara {index} (nombre no disponible)",
+                        index=index,
+                        backend=backend,
+                        backend_name=_camera_backend_name(backend),
+                    )
+                )
+        if devices:
+            return devices
+    return []
+
 
 POSE_CONNECTIONS = (
     (0, 1), (1, 2), (2, 3), (3, 7),
@@ -96,9 +176,18 @@ class CameraWorker(QThread):
     REQUESTED_HEIGHT = 480
     REQUESTED_FPS = 60
 
-    def __init__(self, camera_index: int, model_variant: str = "full", parent=None):
+    def __init__(
+        self,
+        camera_index: int,
+        model_variant: str = "full",
+        parent=None,
+        camera_backend: int | None = None,
+        camera_name: str | None = None,
+    ):
         super().__init__(parent)
         self.camera_index = camera_index
+        self.camera_backend = camera_backend
+        self.camera_name = camera_name or f"Cámara {camera_index}"
         self.model_variant = model_variant if model_variant in MODEL_VARIANTS else "full"
         self._running = True
 
@@ -242,12 +331,14 @@ class CameraWorker(QThread):
     def run(self) -> None:
         camera = None
         try:
-            self.status.emit("Abriendo cámara...")
-            backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+            self.status.emit(f"Abriendo {self.camera_name}...")
+            backend = self.camera_backend
+            if backend is None:
+                backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
             camera = cv2.VideoCapture(self.camera_index, backend)
             if not camera.isOpened():
                 raise RuntimeError(
-                    f"No se pudo abrir la cámara {self.camera_index}. "
+                    f"No se pudo abrir {self.camera_name}. "
                     "Prueba otro dispositivo o cierra las aplicaciones que la estén usando."
                 )
 
@@ -288,7 +379,7 @@ class CameraWorker(QThread):
             if not self._running or self._inference_error:
                 return
 
-            self.status.emit("Cámara lista. Colócate de cuerpo completo frente a ella.")
+            self.status.emit(f"{self.camera_name} lista. Colócate de cuerpo completo frente a ella.")
             self.ready.emit()
 
             failed_reads = 0

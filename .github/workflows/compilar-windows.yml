@@ -40,6 +40,7 @@ jobs:
           --name MineimatorMotionCapture
           --collect-all mediapipe
           --collect-all cv2
+          --collect-all cv2_enumerate_cameras
           --collect-all PySide6
           main.py
 

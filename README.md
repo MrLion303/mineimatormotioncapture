@@ -2,6 +2,13 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.4
+
+- Retargeting basado en la jerarquía real del `.miobject`: cabeza y brazos heredan el torso; las piernas heredan el giro de pelvis/raíz sin compensar un giro aislado del torso.
+- La jerarquía se obtiene de las relaciones `parent` del archivo elegido; no se presupone que todas las partes tengan el mismo padre.
+- Selector de cámaras con nombres reales de dispositivos, backend detectado y botón para actualizar la lista.
+- Añadida la opción **Heavy** de MediaPipe Pose Landmarker, conservando Full y Lite.
+
 ## Mejoras de la versión 0.2.3
 
 - La cámara solicita 60 FPS en lugar de estar limitada a 30 FPS.
@@ -51,7 +58,7 @@ python main.py
 ## Flujo de uso
 
 1. Conecta la webcam.
-2. Selecciona **Full** para priorizar el detalle del seguimiento o **Lite** si el equipo necesita más rendimiento.
+2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento.
 3. Carga tu plantilla humana .miobject.
 4. Define la duración y los FPS.
 5. Colócate de cuerpo completo dentro del encuadre y mantén tu postura inicial durante la cuenta regresiva.
