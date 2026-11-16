@@ -2,7 +2,17 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
-## Mejoras de la versión 0.2.8
+## Mejoras de la versión 0.2.9
+
+- La orientación de pelvis se calcula únicamente desde la línea de las caderas; el balanceo alternado de las piernas ya no provoca giros falsos de toda la raíz.
+- El retargeting utiliza la orientación 3D de los dos segmentos de cada extremidad para conservar mejor la dirección y el plano de flexión de brazos y piernas.
+- La rotación del movimiento se compone matemáticamente con los ángulos de reposo del rig, en vez de sumar Euler por separado.
+- Se exporta el desplazamiento global estimado de las caderas en `char.POS_X/POS_Y/POS_Z`, con escala ajustable y opción para desactivarlo.
+- Durante REC se conserva la secuencia completa de fotogramas comprimidos con sus timestamps (hasta 18.000 muestras, equivalente a 5 minutos a 60 FPS). Al detener la toma, se procesa toda la cola antes de habilitar la exportación; no se cierra la captura mientras queden fotogramas pendientes.
+- Se elimina el segundo suavizado de ángulos; la estabilización temporal se aplica una sola vez sobre landmarks 2D y 3D, con respuesta más rápida.
+- Al perder momentáneamente las caderas, la raíz conserva la última posición válida en lugar de regresar al origen de la captura.
+
+# Mejoras de la versión 0.2.8
 
 - La orientación global se calcula ahora desde la pelvis (caderas y rodillas), no desde el torso. Una torsión de cintura permanece en `body`; un giro de todo el cuerpo se exporta en `char.ROT_Z`.
 - Si no se puede estimar el marco de pelvis por oclusión, se usa el torso como respaldo.
@@ -84,7 +94,7 @@ python main.py
 1. Conecta la webcam.
 2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento. Ajusta por separado los FPS de la vista previa; la cámara no se fuerza a 60 FPS.
 3. Carga tu plantilla humana .miobject.
-4. Define la duración y los FPS.
+4. Define la duración y los FPS. Activa **Capturar desplazamiento del cuerpo** para animar también la posición global; ajusta la escala en unidades de Mine-imator por metro si el desplazamiento queda demasiado grande o pequeño.
 5. Colócate de cuerpo completo dentro del encuadre y mantén tu postura inicial durante la cuenta regresiva.
 6. Pulsa **Grabar**. Se mostrará 3, 2, 1 y después comenzará la captura.
 7. La grabación termina automáticamente al llegar a la duración elegida; también puedes detenerla antes.

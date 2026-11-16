@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
+import numpy as np
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
@@ -166,6 +167,7 @@ def _download_model(target: Path, variant: str, status_callback) -> None:
 
 class CameraWorker(QThread):
     pose_ready = Signal(object, float)
+    capture_drained = Signal()
     preview_fps = Signal(float)
     pose_fps = Signal(float)
     status = Signal(str)
@@ -195,7 +197,16 @@ class CameraWorker(QThread):
 
         # La cámara y MediaPipe trabajan por separado para que el análisis no
         # bloquee la lectura ni la presentación del vídeo.
-        self._inference_queue = queue.Queue(maxsize=1)
+        # REC keeps a short timestamped history; idle preview only needs the
+        # newest pending frame. The buffer is bounded to avoid unbounded memory.
+        # Up to five minutes at 60 FPS. REC frames are JPEG-compressed at
+        # camera capture time, so even slow inference does not consume one
+        # full-resolution BGR buffer per pending frame.
+        self._inference_queue = queue.Queue(maxsize=18_000)
+        self._capture_mode_lock = threading.Lock()
+        self._recording_capture = False
+        self._draining_capture = False
+        self._inference_busy = False
         self._inference_ready = threading.Event()
         self._inference_error: str | None = None
         self._inference_thread: threading.Thread | None = None
@@ -214,6 +225,37 @@ class CameraWorker(QThread):
         self._preview_fps = max(10, min(60, int(fps)))
         self._preview_interval = 1.0 / self._preview_fps
 
+    def begin_recording_capture(self) -> None:
+        """Start a fresh timestamped inference queue for a new recording."""
+        with self._capture_mode_lock:
+            self._recording_capture = True
+            self._draining_capture = False
+            while True:
+                try:
+                    self._inference_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+    def finish_recording_capture(self) -> None:
+        """Stop enqueueing new frames and process every frame still buffered."""
+        with self._capture_mode_lock:
+            self._recording_capture = False
+            self._draining_capture = True
+        self._notify_capture_drained()
+
+    def _notify_capture_drained(self) -> None:
+        should_emit = False
+        with self._capture_mode_lock:
+            if (
+                self._draining_capture
+                and not self._inference_busy
+                and self._inference_queue.empty()
+            ):
+                self._draining_capture = False
+                should_emit = True
+        if should_emit:
+            self.capture_drained.emit()
+
     def latest_preview_frame(self) -> tuple[int, QImage] | None:
         """Devuelve el frame más reciente sin crear una cola de señales Qt."""
         with self._preview_lock:
@@ -226,23 +268,32 @@ class CameraWorker(QThread):
 
     @staticmethod
     def _enqueue_latest(target_queue: queue.Queue, item: tuple) -> None:
-        """Mantiene como máximo un frame pendiente, siempre el más reciente."""
+        """Keep only the newest pending frame outside a recording."""
+        while True:
+            try:
+                target_queue.get_nowait()
+            except queue.Empty:
+                break
+        try:
+            target_queue.put_nowait(item)
+        except queue.Full:
+            pass
+
+    @staticmethod
+    def _enqueue_recording(target_queue: queue.Queue, item: tuple) -> None:
+        """Keep a bounded chronological buffer while preserving recent motion."""
         try:
             target_queue.put_nowait(item)
             return
         except queue.Full:
             pass
-
         try:
             target_queue.get_nowait()
         except queue.Empty:
             pass
-
         try:
             target_queue.put_nowait(item)
         except queue.Full:
-            # Si el consumidor recuperó la cola justo ahora, no bloqueamos
-            # nunca la captura para entregar una imagen antigua.
             pass
 
     @staticmethod
@@ -290,10 +341,27 @@ class CameraWorker(QThread):
             stats_started_at = time.monotonic()
 
             while self._running:
+                with self._capture_mode_lock:
+                    self._inference_busy = True
                 try:
                     frame, captured_at, timestamp_ms = self._inference_queue.get(timeout=0.1)
                 except queue.Empty:
+                    with self._capture_mode_lock:
+                        self._inference_busy = False
+                    self._notify_capture_drained()
                     continue
+
+                if isinstance(frame, bytes):
+                    decoded = cv2.imdecode(
+                        np.frombuffer(frame, dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    if decoded is None:
+                        with self._capture_mode_lock:
+                            self._inference_busy = False
+                        self._notify_capture_drained()
+                        continue
+                    frame = decoded
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -312,9 +380,13 @@ class CameraWorker(QThread):
                         pose_data = {
                             "world": self._landmark_values(result.pose_world_landmarks[0]),
                             "image": image_landmarks,
+                            "image_size": (int(frame.shape[1]), int(frame.shape[0])),
                         }
                         self.pose_ready.emit(pose_data, captured_at)
 
+                with self._capture_mode_lock:
+                    self._inference_busy = False
+                self._notify_capture_drained()
                 now = time.monotonic()
                 interval = now - stats_started_at
                 if interval >= 1.0:
@@ -408,12 +480,47 @@ class CameraWorker(QThread):
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
-                # Se entrega una copia al hilo de IA sin esperar a que termine.
-                inference_frame = frame.copy()
-                self._enqueue_latest(
-                    self._inference_queue,
-                    (inference_frame, captured_at, timestamp_ms),
-                )
+                # Idle only needs the newest frame. During REC every frame is
+                # resized proportionally and JPEG-compressed before enqueueing;
+                # the original camera image remains available for the preview.
+                with self._capture_mode_lock:
+                    recording = self._recording_capture and not self._draining_capture
+                    idle_tracking = not self._recording_capture and not self._draining_capture
+
+                if recording:
+                    source_height, source_width = frame.shape[:2]
+                    resize_factor = min(
+                        1.0,
+                        480.0 / max(1, source_width),
+                        360.0 / max(1, source_height),
+                    )
+                    inference_frame = cv2.resize(
+                        frame,
+                        (
+                            max(1, int(round(source_width * resize_factor))),
+                            max(1, int(round(source_height * resize_factor))),
+                        ),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                    encoded_ok, encoded_frame = cv2.imencode(
+                        ".jpg",
+                        inference_frame,
+                        [cv2.IMWRITE_JPEG_QUALITY, 92],
+                    )
+                    if encoded_ok:
+                        with self._capture_mode_lock:
+                            if self._recording_capture and not self._draining_capture:
+                                self._enqueue_recording(
+                                    self._inference_queue,
+                                    (encoded_frame.tobytes(), captured_at, timestamp_ms),
+                                )
+                elif idle_tracking:
+                    with self._capture_mode_lock:
+                        if not self._recording_capture and not self._draining_capture:
+                            self._enqueue_latest(
+                                self._inference_queue,
+                                (frame.copy(), captured_at, timestamp_ms),
+                            )
 
                 now = time.monotonic()
                 interval = now - stats_started_at

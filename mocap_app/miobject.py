@@ -16,7 +16,7 @@ PART_FIELDS = {
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "left_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
-    "root": ("ROT_X", "ROT_Y", "ROT_Z"),
+    "root": ("POS_X", "POS_Y", "POS_Z", "ROT_X", "ROT_Y", "ROT_Z"),
 }
 
 KEYFRAME_ANGLE_THRESHOLD = 0.18
@@ -357,6 +357,8 @@ def export_miobject(
     duration_seconds: float | None = None,
     optimize_keyframes: bool = True,
     smooth_motion: bool = True,
+    capture_translation: bool = True,
+    translation_scale: float = 18.0,
 ) -> dict[str, Any]:
     if not 12 <= int(fps) <= 60:
         raise MiobjectError("Los FPS de salida deben estar entre 12 y 60.")
@@ -390,6 +392,8 @@ def export_miobject(
             part_parents=part_parents,
             body_bend_axes=body_bend_axes,
             previous_controls=previous_controls,
+            capture_translation=capture_translation,
+            translation_scale=translation_scale,
         )
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
@@ -444,13 +448,9 @@ def export_miobject(
             }
             frame_values.append(values)
 
-        for field in fields:
-            filtered = _smooth(
-                [frame[field] for frame in frame_values],
-                smooth_motion,
-            )
-            for index, value in enumerate(filtered):
-                frame_values[index][field] = value
+        # Landmark-space One Euro filtering is the only smoothing pass.
+        # Filtering the already-retargeted angles again adds latency and shrinks
+        # fast gestures, so preserve the interpolated articulation here.
         part_frame_values[part] = frame_values
 
     keyframe_counts: dict[str, int] = {}

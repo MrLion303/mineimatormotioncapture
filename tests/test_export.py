@@ -9,7 +9,9 @@ from mocap_app.miobject import (
     export_miobject,
 )
 from mocap_app.retarget import (
+    _apply_rotation_delta,
     _quaternion_from_euler_xyz,
+    _quaternion_multiply,
     _quaternion_to_euler_xyz,
     calculate_pose_controls,
 )
@@ -123,11 +125,10 @@ def test_arm_motion_is_relative_to_body_and_keeps_rest_offset():
     baseline = {"left_arm": {"ROT_Y": 120.0, "BEND_ANGLE_X": 10.0}}
     controls = calculate_pose_controls(moved, base, baseline)
     assert "left_arm" in controls
-    assert abs(controls["left_arm"]["ROT_Y"] - 120.0) < 0.1
-    assert (
-        abs(controls["left_arm"]["ROT_X"]) > 0.1
-        or abs(controls["left_arm"]["ROT_Z"]) > 0.1
-    )
+    assert max(
+        abs(controls["left_arm"][field] - baseline["left_arm"].get(field, 0.0))
+        for field in ("ROT_X", "ROT_Y", "ROT_Z")
+    ) > 0.1
 
 
 def test_slow_subtle_motion_keeps_keyframes():
@@ -169,7 +170,9 @@ def test_export_preserves_template_rest_pose_and_group_transform(tmp_path):
     assert character["default_values"] == {
         "POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0
     }
-    assert "POS_X" not in character["keyframes"]["0"]
+    assert character["keyframes"]["0"]["POS_X"] == 12.0
+    assert character["keyframes"]["0"]["POS_Y"] == 24.0
+    assert character["keyframes"]["0"]["POS_Z"] == 3.0
     folder = next(item for item in exported["timelines"] if item["type"] == "folder")
     assert folder["keyframes"] == {"0": {"ROT_Y": 80.0}}
 
@@ -318,6 +321,78 @@ def test_full_body_turn_rotates_body_and_root_parented_legs_together():
     assert abs(controls["right_leg"]["ROT_Y"]) < 0.5
 
 
+
+def test_leg_swing_does_not_rotate_the_character_root():
+    neutral = standing_pose()
+    walking = standing_pose()
+    walking["world"][25][0] -= 0.18
+    walking["world"][27][0] -= 0.30
+    walking["world"][26][0] += 0.16
+    walking["world"][28][0] += 0.28
+    controls = calculate_pose_controls(walking, neutral)
+    assert abs(controls["root"]["ROT_Z"]) < 0.01
+    for part in ("left_leg", "right_leg"):
+        assert max(
+            abs(controls[part][field])
+            for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X")
+        ) > 1.0
+
+
+def _with_image_projection(pose, shift_x=0.0, shift_y=0.0):
+    projected = {key: value for key, value in pose.items()}
+    image = []
+    for point in pose["world"]:
+        image.append([
+            0.5 + point[0] * 0.1 + shift_x,
+            0.5 + point[1] * 0.1 + shift_y,
+            point[2] * 0.1,
+            1.0,
+            1.0,
+        ])
+    projected["image"] = image
+    projected["image_size"] = (640, 480)
+    return projected
+
+
+def test_root_translation_tracks_screen_displacement_and_can_be_disabled():
+    neutral = _with_image_projection(standing_pose())
+    moved = _with_image_projection(standing_pose(), shift_x=0.05, shift_y=-0.04)
+    baseline = {"root": {"POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0}}
+
+    controls = calculate_pose_controls(
+        moved,
+        neutral,
+        base_values=baseline,
+        translation_scale=18.0,
+    )
+    assert controls["root"]["POS_X"] > 12.0
+    assert controls["root"]["POS_Z"] > 3.0
+    assert abs(controls["root"]["POS_Y"] - 24.0) < 0.1
+
+    frozen = calculate_pose_controls(
+        moved,
+        neutral,
+        base_values=baseline,
+        capture_translation=False,
+    )
+    assert frozen["root"]["POS_X"] == 12.0
+    assert frozen["root"]["POS_Y"] == 24.0
+    assert frozen["root"]["POS_Z"] == 3.0
+
+
+def test_limb_orientation_uses_the_bend_plane_without_losing_rest_rotation():
+    neutral = standing_pose()
+    moved = standing_pose()
+    moved["world"][13][2] += 0.20
+    moved["world"][15][2] += 0.36
+    baseline = {"left_arm": {"ROT_X": 4.0, "ROT_Y": 120.0, "ROT_Z": -8.0}}
+    controls = calculate_pose_controls(moved, neutral, base_values=baseline)
+    assert max(
+        abs(controls["left_arm"][field] - baseline["left_arm"].get(field, 0.0))
+        for field in ("ROT_X", "ROT_Y", "ROT_Z")
+    ) > 0.1
+
+
 def test_euler_conversion_stays_continuous_when_yaw_crosses_90_degrees():
     pose_80 = _quaternion_from_euler_xyz((0.0, 80.0, 0.0))
     pose_100 = _quaternion_from_euler_xyz((0.0, 100.0, 0.0))
@@ -360,3 +435,51 @@ def test_export_places_global_facing_rotation_on_char_root(tmp_path):
 
     assert abs(abs(last_root_yaw - first_root_yaw) - 55.0) < 0.5
     assert abs(last_body_yaw - first_body_yaw) < 0.5
+
+
+
+def test_local_joint_delta_is_composed_with_rest_rotation_in_local_order():
+    baseline = {
+        "left_arm": {
+            "ROT_X": 27.0,
+            "ROT_Y": 113.0,
+            "ROT_Z": -18.0,
+        }
+    }
+    delta = _quaternion_from_euler_xyz((13.0, -7.0, 11.0))
+    result = _apply_rotation_delta(baseline, "left_arm", delta)
+    actual = _quaternion_from_euler_xyz((
+        result["ROT_X"], result["ROT_Y"], result["ROT_Z"]
+    ))
+    rest = _quaternion_from_euler_xyz((27.0, 113.0, -18.0))
+    expected = _quaternion_multiply(rest, delta)
+    # q and -q represent the same orientation.
+    similarity = abs(sum(a * b for a, b in zip(actual, expected)))
+    assert abs(similarity - 1.0) < 1e-5
+
+
+
+def test_export_writes_camera_translation_to_char_position_tracks(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "translated.miobject"
+    make_template(template_path)
+
+    neutral = _with_image_projection(standing_pose())
+    moved = _with_image_projection(standing_pose(), shift_x=0.04, shift_y=-0.03)
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, neutral), (1.0, moved)],
+        fps=30,
+        duration_seconds=1.0,
+        optimize_keyframes=False,
+        smooth_motion=False,
+        translation_scale=18.0,
+    )
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    character = next(item for item in exported["timelines"] if item["type"] == "char")
+    first = character["keyframes"]["0"]
+    last = character["keyframes"]["30"]
+    assert last["POS_X"] > first["POS_X"]
+    assert last["POS_Z"] > first["POS_Z"]

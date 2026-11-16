@@ -8,6 +8,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
         self.record_start = 0.0
         self.record_limit = 10.0
         self.recorded_duration = 0.0
+        self.record_end = 0.0
         self.samples: list[tuple[float, dict]] = []
 
         self.countdown_timer = QTimer(self)
@@ -307,6 +309,31 @@ class MainWindow(QMainWindow):
         self.optimize_check = QCheckBox("Optimizar cantidad de keyframes")
         self.optimize_check.setChecked(True)
         options_layout.addWidget(self.optimize_check)
+
+        self.translation_check = QCheckBox("Capturar desplazamiento del cuerpo")
+        self.translation_check.setChecked(True)
+        self.translation_check.setToolTip(
+            "Anima la posición global del personaje en Mine-imator usando el "
+            "desplazamiento de las caderas en la cámara."
+        )
+        options_layout.addWidget(self.translation_check)
+
+        translation_row = QHBoxLayout()
+        translation_label = QLabel("Escala de desplazamiento")
+        translation_label.setObjectName("fieldLabel")
+        self.translation_scale_spin = QDoubleSpinBox()
+        self.translation_scale_spin.setRange(4.0, 40.0)
+        self.translation_scale_spin.setDecimals(1)
+        self.translation_scale_spin.setSingleStep(1.0)
+        self.translation_scale_spin.setValue(18.0)
+        self.translation_scale_spin.setSuffix(" u/m")
+        self.translation_scale_spin.setToolTip(
+            "Unidades de Mine-imator por metro estimado. Ajusta este valor "
+            "si el personaje se desplaza demasiado o muy poco."
+        )
+        translation_row.addWidget(translation_label, 1)
+        translation_row.addWidget(self.translation_scale_spin)
+        options_layout.addLayout(translation_row)
         capture_layout.addWidget(options_panel)
 
         capture_layout.addSpacing(2)
@@ -764,6 +791,7 @@ class MainWindow(QMainWindow):
         )
         self.camera_worker = worker
         worker.pose_ready.connect(self._receive_pose)
+        worker.capture_drained.connect(self._capture_drained)
         worker.preview_fps.connect(self._update_preview_fps)
         worker.pose_fps.connect(self._update_pose_fps)
         worker.status.connect(self._set_status)
@@ -827,6 +855,8 @@ class MainWindow(QMainWindow):
     def _camera_error(self, message: str) -> None:
         self._set_status(f"Error de cámara: {message}")
         QMessageBox.critical(self, "No se pudo iniciar la cámara", message)
+        if self.state == "finalizing":
+            self._complete_recording()
 
     def _camera_finished(self, worker: CameraWorker) -> None:
         if self.camera_worker is not worker:
@@ -937,10 +967,12 @@ class MainWindow(QMainWindow):
         self._render_preview(smooth=True)
 
     def _receive_pose(self, pose: dict, captured_at: float) -> None:
-        if self.state != "recording":
+        if self.state not in ("recording", "finalizing"):
             return
         elapsed = captured_at - self.record_start
-        if 0.0 <= elapsed <= self.record_limit:
+        if 0.0 <= elapsed <= self.recorded_duration + 0.002:
+            if self.samples and elapsed <= self.samples[-1][0]:
+                return
             self.samples.append((elapsed, pose))
             if len(self.samples) % 15 == 0:
                 self.time_label.setText(f"{len(self.samples)} muestras")
@@ -954,6 +986,7 @@ class MainWindow(QMainWindow):
         self.state = "countdown"
         self.duration_spin.setEnabled(False)
         self.fps_spin.setEnabled(False)
+        self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
         self.quality_combo.setEnabled(False)
         self.record_button.setEnabled(False)
@@ -978,6 +1011,9 @@ class MainWindow(QMainWindow):
         self.state = "recording"
         self.record_start = time.monotonic()
         self.recorded_duration = self.record_limit
+        self.record_end = self.record_start + self.record_limit
+        if self.camera_worker is not None:
+            self.camera_worker.begin_recording_capture()
         self.overlay.setText("REC")
         self.overlay.show()
         self.time_label.setText(f"{self.record_limit:.1f} s restantes")
@@ -1006,21 +1042,54 @@ class MainWindow(QMainWindow):
             self._restore_controls()
         elif self.state == "recording":
             self._finish_recording(automatic=False)
+        elif self.state == "finalizing":
+            self._complete_recording()
 
     def _finish_recording(self, automatic: bool) -> None:
         if self.state != "recording":
             return
         self.record_timer.stop()
         elapsed = time.monotonic() - self.record_start
-        self.recorded_duration = self.record_limit if automatic else max(0.05, min(elapsed, self.record_limit))
+        self.recorded_duration = (
+            self.record_limit
+            if automatic
+            else max(0.05, min(elapsed, self.record_limit))
+        )
+        self.record_end = self.record_start + self.recorded_duration
+        self.state = "finalizing"
+        self.overlay.setText("...")
+        self.overlay.show()
+        self.stop_button.setEnabled(False)
+        self.stop_button.setText("Procesando...")
+        self._set_status("Procesando los últimos fotogramas de la captura...")
+
+        worker = self.camera_worker
+        if worker is None:
+            self._complete_recording()
+            return
+        worker.finish_recording_capture()
+
+    def _capture_drained(self) -> None:
+        if self.state == "finalizing":
+            self._complete_recording()
+
+    def _complete_recording(self) -> None:
+        if self.state != "finalizing":
+            return
         self.state = "idle"
         self.overlay.hide()
-        self.progress.setValue(1000 if automatic else int(self.recorded_duration / self.record_limit * 1000))
+        self.progress.setValue(
+            1000 if self.recorded_duration >= self.record_limit
+            else int(self.recorded_duration / self.record_limit * 1000)
+        )
         self.time_label.setText(f"{len(self.samples)} muestras")
         self._restore_controls()
 
         if not self.samples:
-            self._set_status("No se detectó una pose durante la grabación. Ajusta el encuadre e inténtalo de nuevo.")
+            self._set_status(
+                "No se detectó una pose durante la grabación. Ajusta el encuadre "
+                "e inténtalo de nuevo."
+            )
         else:
             self._set_status(
                 f"Grabación terminada: {self.recorded_duration:.1f} segundos y "
@@ -1031,6 +1100,7 @@ class MainWindow(QMainWindow):
     def _restore_controls(self) -> None:
         self.duration_spin.setEnabled(True)
         self.fps_spin.setEnabled(True)
+        self.camera_button.setEnabled(self.camera_ready)
         self.camera_combo.setEnabled(
             bool(self.camera_devices)
             and self.state == "idle"
@@ -1095,6 +1165,8 @@ class MainWindow(QMainWindow):
                 duration_seconds=self.recorded_duration,
                 optimize_keyframes=self.optimize_check.isChecked(),
                 smooth_motion=self.smooth_check.isChecked(),
+                capture_translation=self.translation_check.isChecked(),
+                translation_scale=self.translation_scale_spin.value(),
             )
         except (MiobjectError, OSError, ValueError) as exc:
             QMessageBox.critical(self, "No se pudo exportar", str(exc))

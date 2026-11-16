@@ -34,3 +34,31 @@ def test_preview_frame_counter_publishes_latest_image():
     assert first[0] == 1
     assert second[0] == 2
     assert second[1] == image
+
+
+def test_recording_queue_keeps_recent_chronological_samples():
+    pending = queue.Queue(maxsize=2)
+    frames = [object(), object(), object()]
+    for index, frame in enumerate(frames):
+        CameraWorker._enqueue_recording(
+            pending,
+            (frame, float(index), 1000 + index),
+        )
+
+    first = pending.get_nowait()
+    second = pending.get_nowait()
+    assert first[0] is frames[1]
+    assert second[0] is frames[2]
+
+
+def test_latest_queue_discards_backlog_outside_recording():
+    pending = queue.Queue(maxsize=5)
+    frames = [object(), object(), object()]
+    for index, frame in enumerate(frames):
+        CameraWorker._enqueue_latest(
+            pending,
+            (frame, float(index), 1000 + index),
+        )
+
+    assert pending.qsize() == 1
+    assert pending.get_nowait()[0] is frames[-1]

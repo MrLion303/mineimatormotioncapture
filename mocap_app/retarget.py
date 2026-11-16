@@ -99,32 +99,113 @@ def _body_basis(pose: dict[str, Any]) -> Basis | None:
 
 
 def _root_basis(pose: dict[str, Any]) -> Basis | None:
-    """Estimate pelvis/root orientation independently from the upper torso."""
+    """Estimate pelvis facing from the hip line only.
+
+    Knees and ankles are deliberately excluded: their cyclic motion during a
+    walk must never be interpreted as a whole-character turn.
+    """
     left_hip = _point(pose, 23)
     right_hip = _point(pose, 24)
-    left_knee = _point(pose, 25) or _point(pose, 27)
-    right_knee = _point(pose, 26) or _point(pose, 28)
-    if any(point is None for point in (left_hip, right_hip, left_knee, right_knee)):
+    if left_hip is None or right_hip is None:
         return None
 
-    hip_mid = _midpoint(left_hip, right_hip)
-    knee_mid = _midpoint(left_knee, right_knee)
-    hip_width = _sub(right_hip, left_hip)
-    knee_width = _sub(right_knee, left_knee)
-    x_axis = _normalize(_add(hip_width, knee_width)) or _normalize(hip_width)
+    x_axis = _normalize(_sub(right_hip, left_hip))
     if x_axis is None:
         return None
 
-    up_raw = _sub(hip_mid, knee_mid)
-    up_orthogonal = _sub(up_raw, _scale(x_axis, _dot(up_raw, x_axis)))
+    world_up: Vector = (0.0, -1.0, 0.0)
+    up_orthogonal = _sub(world_up, _scale(x_axis, _dot(world_up, x_axis)))
     y_axis = _normalize(up_orthogonal)
     if y_axis is None:
         return None
-
     z_axis = _normalize(_cross(x_axis, y_axis))
     if z_axis is None:
         return None
+    y_axis = _normalize(_cross(z_axis, x_axis)) or y_axis
     return (x_axis, y_axis, z_axis)
+
+
+def _image_point(pose: dict[str, Any], index: int) -> tuple[float, float] | None:
+    points = pose.get("image") or []
+    if index >= len(points):
+        return None
+    value = points[index]
+    if value is None or len(value) < 2:
+        return None
+    visibility = float(value[3]) if len(value) > 3 else 1.0
+    presence = float(value[4]) if len(value) > 4 else 1.0
+    if min(visibility, presence) < MIN_VISIBILITY:
+        return None
+    return (float(value[0]), float(value[1]))
+
+
+def _root_image_metrics(pose: dict[str, Any]) -> tuple[float, float, float, float, float] | None:
+    """Return hip image position, metres-per-pixel and camera distance estimate."""
+    image = pose.get("image") or []
+    world = pose.get("world") or []
+    image_size = pose.get("image_size") or (640, 480)
+    if len(image_size) < 2:
+        return None
+    width, height = float(image_size[0]), float(image_size[1])
+    if width <= 0.0 or height <= 0.0:
+        return None
+
+    left_hip = _image_point(pose, 23)
+    right_hip = _image_point(pose, 24)
+    if left_hip is None or right_hip is None:
+        return None
+    hip_x = (left_hip[0] + right_hip[0]) * 0.5
+    hip_y = (left_hip[1] + right_hip[1]) * 0.5
+
+    height_indices = (0, 11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32)
+    image_y: list[float] = []
+    world_y: list[float] = []
+    for index in height_indices:
+        image_point = _image_point(pose, index)
+        world_point = _point(pose, index)
+        if image_point is None or world_point is None:
+            continue
+        image_y.append(image_point[1])
+        world_y.append(world_point[1])
+
+    if len(image_y) < 6 or len(world_y) < 6:
+        return None
+    pixel_height = (max(image_y) - min(image_y)) * height
+    world_height = max(world_y) - min(world_y)
+    if pixel_height < 12.0 or world_height < 0.25:
+        return None
+
+    metres_per_pixel = world_height / pixel_height
+    focal_pixels = height / (2.0 * 0.4663076581549986)  # tan(25 degrees)
+    distance = focal_pixels * metres_per_pixel
+    return hip_x, hip_y, metres_per_pixel, distance, width
+
+
+def _root_translation_delta(
+    pose: dict[str, Any],
+    reference_pose: dict[str, Any],
+    units_per_metre: float,
+) -> Vector | None:
+    """Estimate camera-relative root translation from tracked hips."""
+    current = _root_image_metrics(pose)
+    reference = _root_image_metrics(reference_pose)
+    if current is None or reference is None:
+        return None
+
+    current_x, current_y, current_scale, current_distance, width = current
+    reference_x, reference_y, reference_scale, reference_distance, _ = reference
+    image_size = pose.get("image_size") or (640, 480)
+    height = float(image_size[1])
+    scale = (current_scale + reference_scale) * 0.5
+
+    delta_x = (current_x - reference_x) * width * scale
+    delta_z = -(current_y - reference_y) * height * scale
+    delta_y = reference_distance - current_distance
+    return (
+        delta_x * units_per_metre,
+        delta_y * units_per_metre,
+        delta_z * units_per_metre,
+    )
 
 def _to_local(vector: Vector, basis: Basis) -> Vector:
     return (
@@ -345,7 +426,13 @@ def _base_rotation(
     )
 
 
-def _previous_rotation_delta(
+def _rotation_fields(part: str, body_bend_axes: tuple[str, ...] = ()) -> tuple[str, str, str]:
+    x_field = "BEND_ANGLE_X" if part == "body" and "BEND_ANGLE_X" in body_bend_axes else "ROT_X"
+    z_field = "BEND_ANGLE_Z" if part == "body" and "BEND_ANGLE_Z" in body_bend_axes else "ROT_Z"
+    return x_field, "ROT_Y", z_field
+
+
+def _previous_rotation_angles(
     part: str,
     base_values: dict[str, dict[str, float]] | None,
     previous_controls: dict[str, dict[str, float]] | None,
@@ -354,37 +441,83 @@ def _previous_rotation_delta(
     previous = (previous_controls or {}).get(part)
     if not previous:
         return None
-
     base = (base_values or {}).get(part, {})
-    x_field = "BEND_ANGLE_X" if part == "body" and "BEND_ANGLE_X" in body_bend_axes else "ROT_X"
-    z_field = "BEND_ANGLE_Z" if part == "body" and "BEND_ANGLE_Z" in body_bend_axes else "ROT_Z"
-    return (
-        float(previous.get(x_field, base.get(x_field, 0.0))) - float(base.get(x_field, 0.0)),
-        float(previous.get("ROT_Y", base.get("ROT_Y", 0.0))) - float(base.get("ROT_Y", 0.0)),
-        float(previous.get(z_field, base.get(z_field, 0.0))) - float(base.get(z_field, 0.0)),
-    )
+    fields = _rotation_fields(part, body_bend_axes)
+    return tuple(float(previous.get(field, base.get(field, 0.0))) for field in fields)  # type: ignore[return-value]
 
 
 def _apply_rotation_delta(
     base_values: dict[str, dict[str, float]] | None,
     part: str,
     delta: Quaternion,
-    previous_delta: tuple[float, float, float] | None = None,
+    previous_angles: tuple[float, float, float] | None = None,
+    body_bend_axes: tuple[str, ...] = (),
 ) -> dict[str, float]:
-    # Mine-imator's human limbs carry baked-in rest angles (for example,
-    # left arm ROT_Y around +120 degrees and right arm around -60 degrees).
-    # Add local motion offsets to those values instead of composing a world
-    # quaternion with the baked Euler pose, which can create Euler flips.
-    base_x, base_y, base_z = _base_rotation(base_values, part)
-    delta_x, delta_y, delta_z = _quaternion_to_euler_xyz(
-        delta,
-        reference_angles=previous_delta,
+    """Compose a parent-local motion quaternion with the rig's rest rotation."""
+    base = (base_values or {}).get(part, {})
+    fields = _rotation_fields(part, body_bend_axes)
+    base_angles = tuple(float(base.get(field, 0.0)) for field in fields)
+    rest_q = _quaternion_from_euler_xyz(base_angles)
+    result_q = _quaternion_multiply(rest_q, delta)
+    angles = _quaternion_to_euler_xyz(
+        result_q,
+        reference_angles=previous_angles or base_angles,
     )
-    return {
-        "ROT_X": base_x + delta_x,
-        "ROT_Y": base_y + delta_y,
-        "ROT_Z": base_z + delta_z,
+    values = {
+        "ROT_X": float(base.get("ROT_X", 0.0)),
+        "ROT_Y": float(base.get("ROT_Y", 0.0)),
+        "ROT_Z": float(base.get("ROT_Z", 0.0)),
     }
+    for field, value in zip(fields, angles):
+        values[field] = value
+    return values
+
+
+def _stable_perpendicular(axis: Vector) -> Vector:
+    candidates: tuple[Vector, ...] = (
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (1.0, 0.0, 0.0),
+    )
+    reference = min(candidates, key=lambda candidate: abs(_dot(axis, candidate)))
+    projected = _sub(reference, _scale(axis, _dot(reference, axis)))
+    return _normalize(projected) or (0.0, 1.0, 0.0)
+
+
+def _limb_basis(
+    upper: Vector,
+    lower: Vector,
+    preferred_normal: Vector | None = None,
+) -> Basis | None:
+    """Build a limb orientation from its axis and bend-plane normal.
+
+    The bend magnitude is exported separately through BEND_ANGLE_X. Using the
+    bend-plane normal here captures axial twist and bend direction without
+    encoding the elbow/knee bend amount a second time in ROT_X/Y/Z.
+    """
+    x_axis = _normalize(upper)
+    if x_axis is None:
+        return None
+
+    normal = _normalize(_cross(upper, lower))
+    if normal is None and preferred_normal is not None:
+        normal = _normalize(
+            _sub(
+                preferred_normal,
+                _scale(x_axis, _dot(preferred_normal, x_axis)),
+            )
+        )
+    if normal is None:
+        normal = _stable_perpendicular(x_axis)
+
+    if preferred_normal is not None and _dot(normal, preferred_normal) < 0.0:
+        normal = _scale(normal, -1.0)
+    z_axis = normal
+    y_axis = _normalize(_cross(z_axis, x_axis))
+    if y_axis is None:
+        return None
+    z_axis = _normalize(_cross(x_axis, y_axis)) or z_axis
+    return (x_axis, y_axis, z_axis)
 
 
 def _bend_angle(start: Vector, joint: Vector, end: Vector) -> float:
@@ -431,17 +564,27 @@ def _limb_controls(
         current_parent = current_root
         reference_parent = reference_root
 
-    current_vector = _to_local(_sub(current[1], current[0]), current_parent)
-    reference_vector = _to_local(_sub(reference[1], reference[0]), reference_parent)
-    if _length(current_vector) < 1e-4 or _length(reference_vector) < 1e-4:
+    current_upper = _to_local(_sub(current[1], current[0]), current_parent)
+    current_lower = _to_local(_sub(current[2], current[1]), current_parent)
+    reference_upper = _to_local(_sub(reference[1], reference[0]), reference_parent)
+    reference_lower = _to_local(_sub(reference[2], reference[1]), reference_parent)
+    reference_frame = _limb_basis(reference_upper, reference_lower)
+    if reference_frame is None:
+        return None
+    current_frame = _limb_basis(
+        current_upper,
+        current_lower,
+        preferred_normal=reference_frame[2],
+    )
+    if current_frame is None:
         return None
 
-    delta_q = _quaternion_between_vectors(reference_vector, current_vector)
+    delta_q = _relative_basis_rotation(reference_frame, current_frame)
     result = _apply_rotation_delta(
         base_values,
         part,
         delta_q,
-        previous_delta=_previous_rotation_delta(part, base_values, previous_controls),
+        previous_angles=_previous_rotation_angles(part, base_values, previous_controls),
     )
 
     current_bend = _bend_angle(current[0], current[1], current[2])
@@ -461,83 +604,111 @@ def calculate_pose_controls(
     part_parents: dict[str, str] | None = None,
     body_bend_axes: tuple[str, ...] = (),
     previous_controls: dict[str, dict[str, float]] | None = None,
+    capture_translation: bool = True,
+    translation_scale: float = 18.0,
 ) -> dict[str, dict[str, float]]:
-    """Retarget camera motion to Mine-imator's character, torso and limb hierarchy.
-
-    Overall facing direction is written to the character/root track (ROT_Z),
-    while the torso receives only its local lean/twist. Arms/head are relative
-    to the torso; legs are relative to the character root.
-    """
+    """Retarget visible body motion to the selected Mine-imator rig."""
     reference_pose = reference_pose or pose
-    current_body = _body_basis(pose)
-    reference_body = _body_basis(reference_pose)
-    if current_body is None or reference_body is None:
+    current_root_raw = _root_basis(pose)
+    reference_root_raw = _root_basis(reference_pose)
+    current_body_raw = _body_basis(pose)
+    reference_body_raw = _body_basis(reference_pose)
+
+    if current_root_raw is None and current_body_raw is None:
+        return {}
+    if reference_root_raw is None and reference_body_raw is None:
         return {}
 
-    # The pelvis frame, estimated from hips and knees, determines whole-character
-    # facing. If the lower body is occluded, fall back to the torso frame.
-    current_root = _root_basis(pose) or current_body
-    reference_root = _root_basis(reference_pose) or reference_body
-    body_delta = _relative_basis_rotation(reference_body, current_body)
-    root_delta = _relative_basis_rotation(reference_root, current_root)
+    current_root = current_root_raw or current_body_raw
+    reference_root = reference_root_raw or reference_body_raw
+    current_body = current_body_raw or current_root
+    reference_body = reference_body_raw or reference_root
+    if current_root is None or reference_root is None or current_body is None or reference_body is None:
+        return {}
 
+    root_delta = _relative_basis_rotation(reference_root, current_root)
     root_base = (base_values or {}).get("root", {})
     previous_root = (previous_controls or {}).get("root", {})
-    previous_root_yaw = (
+    previous_root_delta = (
         float(previous_root.get("ROT_Z", root_base.get("ROT_Z", 0.0)))
         - float(root_base.get("ROT_Z", 0.0))
     )
     root_angles = _quaternion_to_euler_xyz(
         root_delta,
-        reference_angles=(0.0, previous_root_yaw, 0.0),
+        reference_angles=(0.0, previous_root_delta, 0.0),
     )
     root_yaw_delta = root_angles[1]
 
+    # The supplied Mine-imator human rigs use char.ROT_Z for facing.
+    root_base_angles = (
+        float(root_base.get("ROT_X", 0.0)),
+        float(root_base.get("ROT_Y", 0.0)),
+        float(root_base.get("ROT_Z", 0.0)),
+    )
+    root_delta_mi = _quaternion_from_euler_xyz((0.0, 0.0, root_yaw_delta))
+    root_q = _quaternion_multiply(
+        _quaternion_from_euler_xyz(root_base_angles),
+        root_delta_mi,
+    )
+    root_previous_angles = (
+        tuple(
+            float(previous_root.get(field, root_base.get(field, 0.0)))
+            for field in ("ROT_X", "ROT_Y", "ROT_Z")
+        )
+        if previous_root else root_base_angles
+    )
+    root_output_angles = _quaternion_to_euler_xyz(
+        root_q,
+        reference_angles=root_previous_angles,
+    )
     root_values = {
-        "ROT_X": float(root_base.get("ROT_X", 0.0)),
-        "ROT_Y": float(root_base.get("ROT_Y", 0.0)),
-        "ROT_Z": float(root_base.get("ROT_Z", 0.0)) + root_yaw_delta,
+        field: float(root_base.get(field, 0.0))
+        for field in ("POS_X", "POS_Y", "POS_Z")
     }
+    root_values.update({
+        field: value
+        for field, value in zip(("ROT_X", "ROT_Y", "ROT_Z"), root_output_angles)
+    })
+    if capture_translation:
+        translation = _root_translation_delta(
+            pose,
+            reference_pose,
+            max(0.0, float(translation_scale)),
+        )
+        if translation is None:
+            # When hips/feet are occluded, hold the last known root position
+            # rather than snapping the character back to its original location.
+            for field in ("POS_X", "POS_Y", "POS_Z"):
+                root_values[field] = float(
+                    previous_root.get(field, root_base.get(field, 0.0))
+                )
+        else:
+            dx, dy, dz = translation
+            root_values["POS_X"] += dx
+            root_values["POS_Y"] += dy
+            root_values["POS_Z"] += dz
     controls: dict[str, dict[str, float]] = {"root": root_values}
 
-    # Subtract only pelvis/root yaw from the torso. Any remaining torso turn,
-    # lean or twist stays local to the body track.
     root_yaw_quaternion = _quaternion_from_euler_xyz((0.0, root_yaw_delta, 0.0))
+    body_delta = _relative_basis_rotation(reference_body, current_body)
     body_local_delta = _quaternion_multiply(
         _quaternion_conjugate(root_yaw_quaternion),
         body_delta,
-    )
-    body_previous_delta = _previous_rotation_delta(
-        "body", base_values, previous_controls, body_bend_axes
     )
     body_values = _apply_rotation_delta(
         base_values,
         "body",
         body_local_delta,
-        previous_delta=body_previous_delta,
+        previous_angles=_previous_rotation_angles(
+            "body", base_values, previous_controls, body_bend_axes
+        ),
+        body_bend_axes=body_bend_axes,
     )
-    if body_bend_axes:
-        base_body = (base_values or {}).get("body", {})
-        local_x, _local_y, local_z = _quaternion_to_euler_xyz(
-            body_local_delta,
-            reference_angles=body_previous_delta,
-        )
-        if "BEND_ANGLE_X" in body_bend_axes:
-            body_values["BEND_ANGLE_X"] = (
-                float(base_body.get("BEND_ANGLE_X", 0.0)) + local_x
-            )
-            body_values["ROT_X"] = float(base_body.get("ROT_X", 0.0))
-        if "BEND_ANGLE_Z" in body_bend_axes:
-            body_values["BEND_ANGLE_Z"] = (
-                float(base_body.get("BEND_ANGLE_Z", 0.0)) + local_z
-            )
-            body_values["ROT_Z"] = float(base_body.get("ROT_Z", 0.0))
     controls["body"] = body_values
 
-    # Rebuild the animated character-root frame from the pelvis reference.
-    reference_root_quaternion = _quaternion_from_basis(reference_root)
+    reference_root_q = _quaternion_from_basis(reference_root)
     current_root = _basis_from_quaternion(
-        _quaternion_multiply(reference_root_quaternion, root_yaw_quaternion)
+        _quaternion_multiply(reference_root_q, root_yaw_quaternion)
     )
 
     current_head = _head_basis(pose)
@@ -555,7 +726,7 @@ def calculate_pose_controls(
             base_values,
             "head",
             head_delta,
-            previous_delta=_previous_rotation_delta("head", base_values, previous_controls),
+            previous_angles=_previous_rotation_angles("head", base_values, previous_controls),
         )
 
     limb_specs = (
@@ -587,9 +758,9 @@ def calculate_pose_controls(
 class _OneEuroFilter:
     def __init__(
         self,
-        min_cutoff: float = 1.8,
-        beta: float = 0.12,
-        derivative_cutoff: float = 1.0,
+        min_cutoff: float = 3.0,
+        beta: float = 0.16,
+        derivative_cutoff: float = 1.2,
     ):
         self.min_cutoff = min_cutoff
         self.beta = beta
@@ -642,6 +813,7 @@ def stabilize_pose_samples(
         return ordered
 
     filters: dict[int, tuple[_OneEuroFilter, _OneEuroFilter, _OneEuroFilter]] = {}
+    image_filters: dict[int, tuple[_OneEuroFilter, _OneEuroFilter]] = {}
     stabilized: list[tuple[float, dict[str, Any]]] = []
 
     for timestamp, pose in ordered:
@@ -669,8 +841,31 @@ def stabilize_pose_samples(
             filtered.extend(float(value) for value in point[3:])
             filtered_world.append(filtered)
 
+        filtered_image = []
+        for index, point in enumerate(pose.get("image") or []):
+            if point is None or len(point) < 2:
+                filtered_image.append(point)
+                continue
+            visibility = float(point[3]) if len(point) > 3 else 1.0
+            presence = float(point[4]) if len(point) > 4 else 1.0
+            if min(visibility, presence) < MIN_VISIBILITY:
+                filtered_image.append(list(point))
+                continue
+            point_filters = image_filters.setdefault(
+                index,
+                (_OneEuroFilter(), _OneEuroFilter()),
+            )
+            filtered = [
+                point_filters[axis].filter(float(point[axis]), timestamp)
+                for axis in range(2)
+            ]
+            filtered.extend(float(value) for value in point[2:])
+            filtered_image.append(filtered)
+
         filtered_pose = dict(pose)
         filtered_pose["world"] = filtered_world
+        if "image" in pose:
+            filtered_pose["image"] = filtered_image
         stabilized.append((timestamp, filtered_pose))
 
     return stabilized
