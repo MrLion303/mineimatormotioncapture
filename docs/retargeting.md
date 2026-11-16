@@ -2,55 +2,47 @@
 
 ## Principio de conversión
 
-El retargeting vuelve al mapeo directo de la primera versión. Cada pista de Mine-imator recibe ángulos calculados desde sus propios landmarks de MediaPipe. No se reconstruye una jerarquía 3D completa mediante cuaterniones, no se utiliza una pose neutra para restar orientaciones y no se compensa el movimiento de una articulación contra el de su padre.
+El conversor utiliza los canales nativos del rig humano de Mine-imator y calibra la postura inicial de cada articulación. Los landmarks de MediaPipe están expresados en el sistema de coordenadas de la cámara; no deben escribirse como rotaciones absolutas del personaje. En la exportación, el primer valor fiable de cada canal se toma como referencia y los keyframes contienen el cambio respecto a esa postura.
 
-El objetivo es que el movimiento visible en el esqueleto de cámara llegue a los canales de articulación correspondientes, sin añadir traslación o giro global del personaje.
+La raíz `char` permanece fija. No se generan traslaciones, giros globales ni desplazamientos de las articulaciones.
 
-## Correspondencia de landmarks
+## Correspondencia de landmarks y canales
 
 | Pista de Mine-imator | Landmarks | Canales animados |
 |---|---|---|
-| `body` | Hombros y caderas | `ROT_X`, `ROT_Y`, `ROT_Z` |
-| `head` | Nariz y laterales de la cabeza | `ROT_X`, `ROT_Y`, `ROT_Z` |
-| `left_arm` | Hombro 11, codo 13, muñeca 15 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
-| `right_arm` | Hombro 12, codo 14, muñeca 16 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
-| `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
-| `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Z`, `BEND_ANGLE_X` |
+| `body` | Eje entre hombros y caderas, orientación de hombros | `BEND_ANGLE_X`, `BEND_ANGLE_Y`, `BEND_ANGLE_Z` |
+| `head` | Nariz y eje entre orejas | `ROT_X`, `ROT_Z` |
+| `left_arm` | Hombro 11, codo 13, muñeca 15 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
+| `right_arm` | Hombro 12, codo 14, muñeca 16 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
+| `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
+| `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 
-## Orientación de brazos y piernas
+El torso se anima con los tres canales `BEND_ANGLE`, no con `ROT_X/Y/Z`. La cabeza utiliza X y Z; no se escribe una rotación Y que no aparece en la referencia de rig compartida. Brazos y piernas usan orientación y flexión por separado: el vector del segmento superior produce las rotaciones y el ángulo de tres puntos produce la flexión del codo o la rodilla. No se inventa torsión axial, por lo que `ROT_Y` de las extremidades permanece en cero.
 
-Para cada segmento principal se obtiene el vector desde la articulación de origen hasta la siguiente articulación. La inclinación se calcula directamente:
+## Calibración de postura inicial
 
-`ROT_X = atan2(\Delta z, \Delta y \cdot downSign)`
+Cada pista y canal se calibra con su primera muestra válida. Esa medición se resta de las muestras siguientes usando la diferencia angular más corta, evitando saltos de 360°. Así, los offsets de la cámara (por ejemplo, valores iniciales cercanos a 170°) no se convierten en una rotación enorme del personaje. Una articulación que aparece más tarde se calibra al hacerse visible por primera vez.
 
-`ROT_Z = atan2(\Delta x, \Delta y \cdot downSign)`
-
-El signo vertical `downSign` se infiere de la dirección de las espinillas visibles, para admitir ambas convenciones del eje Y de MediaPipe. El mapeo directo usa `ROT_Y = 0` en los miembros; no intenta inventar torsión axial que el esqueleto de 33 landmarks no entrega de forma fiable.
-
-La flexión se calcula por separado con los tres puntos de cada extremidad. Se obtiene el ángulo interior entre los dos segmentos y se convierte en flexión como `180° - ánguloInterior`, limitada al rango admitido por el retargeter. Así, la orientación del brazo o pierna y la flexión del codo o rodilla son magnitudes separadas.
-
-## Torso y cabeza
-
-El torso se orienta a partir del eje entre los puntos medios de hombros y caderas, y del eje entre ambos hombros. La cabeza se orienta a partir de la nariz y del eje entre orejas. Esas pistas siguen correspondiendo al movimiento capturado del torso y la cabeza, pero no modifican la pista global del personaje.
+Al comenzar REC, la persona debe permanecer un instante en postura neutra y después ejecutar el movimiento. Esta referencia inicial es esencial: la aplicación no puede inferir cuál sería la postura de reposo si la grabación comienza mientras ya se está realizando un gesto.
 
 ## Raíz y posición de escena
 
-La pista `char` se congela en el primer transform que encuentre. Si la plantilla tenía keyframes de posición o rotación global, se conservan únicamente los valores del primer fotograma; si no tenía keyframes, se mantiene su `default_values`. No se exporta movimiento global de cámara a `char`.
+La pista `char` se congela en el primer transform que encuentre. Si la plantilla tenía keyframes de posición o rotación global, se conservan únicamente los valores del primer fotograma; si no tenía keyframes, se mantienen sus `default_values`. No se exporta movimiento global a `char`.
 
 ## Conservación de la plantilla
 
-El exportador conserva propiedades que no anima, incluidas las posiciones de partes como `POS_Z`, referencias de textura como `TEXTURE_OBJ`, y pistas accesorias. La jerarquía existente en el `.miobject` no se reescribe.
+El exportador conserva las propiedades estáticas que no anima, incluidas las posiciones de partes como `POS_Z`, referencias de textura como `TEXTURE_OBJ` y pistas accesorias. La jerarquía existente en el `.miobject` no se reescribe. Los canales nativos que sí se animan se actualizan en las pistas correspondientes.
 
 ## Keyframes y suavizado
 
 Las muestras se ordenan por su timestamp y se interpolan al FPS de exportación. La optimización retiene el primer y último fotograma, agrega claves al superar aproximadamente 1° de cambio y limita el espacio entre claves a 0.20 segundos. Desactivar la optimización escribe todos los fotogramas.
 
-La opción de estabilización aplica el suavizado de ángulos del exportador original. Se puede desactivar para conservar más literalmente las variaciones detectadas.
+La opción de estabilización aplica un suavizado ligero a los canales angulares. Se puede desactivar para conservar más literalmente las variaciones detectadas.
 
 ## Captura de cámara
 
-Durante REC cada frame se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La inferencia procesa los frames pendientes después de detener la toma; la exportación se habilita cuando la cola se vacía. La cola admite hasta 18.000 frames, equivalente a cinco minutos a 60 FPS.
+Durante REC cada frame se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La captura conserva la resolución solicitada de 640×480; únicamente reduce imágenes mayores a ese tamaño. Esto evita que la inferencia durante REC trabaje con una imagen reducida respecto al seguimiento de vista previa. La inferencia procesa los frames pendientes después de detener la toma; la exportación se habilita cuando la cola se vacía.
 
 ## Límites de una sola cámara
 
-Una webcam RGB no mide profundidad absoluta, no observa articulaciones que quedan detrás del cuerpo y no reconstruye los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. Oclusiones, ropa holgada, perspectiva, iluminación y movimiento rápido pueden producir errores antes de que el retargeting reciba los datos. El conversor evita añadir un desplazamiento global o rotación de raíz cuando esos movimientos no forman parte de lo que el usuario quiere exportar.
+Una webcam RGB no mide profundidad absoluta, no observa articulaciones que quedan detrás del cuerpo y no reconstruye los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. Oclusiones, ropa holgada, perspectiva, iluminación y movimiento rápido pueden producir errores antes de que el retargeting reciba los datos. El conversor evita añadir un desplazamiento global o rotación de raíz cuando esos movimientos no forman parte de lo que se quiere exportar.
