@@ -216,8 +216,9 @@ class MainWindow(QMainWindow):
         tip_layout.addWidget(tip_mark, alignment=Qt.AlignmentFlag.AlignTop)
         tip_text = QLabel(
             "Mantén el cuerpo completo dentro del encuadre y evita ocultar hombros, codos, "
-            "muñecas, caderas, rodillas y tobillos. El personaje permanecerá en la posición "
-            "de la plantilla; se animarán las articulaciones capturadas."
+            "muñecas, caderas, rodillas y tobillos. Al comenzar REC, conserva una postura "
+            "neutra y quieta durante un instante para calibrar las articulaciones. Después "
+            "realiza el movimiento. El personaje permanecerá en la posición de la plantilla."
         )
         tip_text.setObjectName("hint")
         tip_text.setWordWrap(True)
@@ -993,7 +994,9 @@ class MainWindow(QMainWindow):
         self.overlay.setText("REC")
         self.overlay.show()
         self.time_label.setText(f"{self.record_limit:.1f} s restantes")
-        self._set_status("Grabando movimiento...")
+        self._set_status(
+            "Calibrando la postura inicial; mantente neutro un instante y después realiza el movimiento."
+        )
         self.record_timer.start()
         self.stop_button.setText("Detener grabación")
 
