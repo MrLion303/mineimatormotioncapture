@@ -2,16 +2,15 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
-## Versión 0.2.10
+## Versión 0.2.11
 
-- Se recupera el mapeo directo de articulaciones de la primera versión, que calcula los ángulos desde los landmarks de cada segmento sin una reconstrucción adicional de cuaterniones ni compensaciones entre jerarquías.
-- Brazos: hombro–codo para la orientación del brazo y hombro–codo–muñeca para la flexión.
-- Piernas: cadera–rodilla para la orientación de la pierna y cadera–rodilla–tobillo para la flexión.
-- El torso y la cabeza se calculan desde sus propios landmarks.
-- La pista `char` se congela en su primer transform. Se eliminan movimientos globales heredados y no se generan desplazamientos nuevos: el personaje permanece en la posición definida por la plantilla.
+- El torso usa los tres canales nativos `BEND_ANGLE_X/Y/Z` de Mine-imator; la cabeza usa `ROT_X` y `ROT_Z`, siguiendo la estructura de la demostración de rig compartida.
+- Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la flexión del codo y la rodilla se calcula por separado.
+- Cada articulación se calibra con su primera muestra válida. La postura de inicio pasa a ser el reposo de la captura, evitando exportar offsets absolutos de cámara como giros cercanos a 180°.
+- La pista `char` se congela en su primer transform. No se generan desplazamientos ni rotaciones globales.
 - La plantilla conserva campos estáticos del rig, como `POS_Z` y `TEXTURE_OBJ`, además de accesorios.
-- La cola de captura mantiene los frames con timestamps durante REC y los procesa antes de habilitar la exportación.
-- La cámara no se fuerza a 60 FPS; los FPS de vista previa se configuran de forma independiente.
+- Durante REC se conserva la resolución solicitada de 640×480; solo se reducen imágenes de cámaras que entreguen una resolución superior.
+- La cola de captura mantiene los frames con timestamps y los procesa antes de habilitar la exportación.
 
 ## Requisitos
 
@@ -42,7 +41,7 @@ python main.py
 7. Al terminar, la aplicación procesa las muestras pendientes.
 8. Exporta un nuevo .miobject.
 
-El retargeting no mueve la raíz ni intenta desplazar al personaje por la escena. Cada articulación se calcula directamente a partir de la dirección de su segmento y, en codos y rodillas, de su ángulo de flexión. La posición del personaje sigue siendo la de la plantilla; cualquier animación global que ya exista en la pista `char` se reduce al primer transform.
+El retargeting convierte los landmarks a los canales nativos del rig humano: flexiones XYZ para el torso, rotaciones X/Z para la cabeza y rotaciones más flexión para las extremidades. La primera muestra válida de cada articulación sirve como referencia neutra; por eso, al iniciar REC, mantén una postura natural y quieta durante un instante antes de comenzar el movimiento. La posición del personaje sigue siendo la de la plantilla y la pista `char` se reduce al primer transform.
 
 ## Compilación de Windows
 
