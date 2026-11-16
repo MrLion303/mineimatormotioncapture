@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import __version__
 from .camera import CameraWorker
 from .miobject import MiobjectError, export_miobject, load_template
 
@@ -56,6 +57,7 @@ class MainWindow(QMainWindow):
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(16)
+        self.preview_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.preview_timer.timeout.connect(self._refresh_preview)
         self._last_preview_sequence = 0
 
@@ -96,7 +98,7 @@ class MainWindow(QMainWindow):
         header.addLayout(heading)
         header.addStretch()
 
-        version = QLabel("BETA  0.2.2")
+        version = QLabel(f"BETA  {__version__}")
         version.setObjectName("version")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addWidget(version, alignment=Qt.AlignmentFlag.AlignTop)
