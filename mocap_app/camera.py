@@ -480,9 +480,10 @@ class CameraWorker(QThread):
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
-                # Idle only needs the newest frame. During REC every frame is
-                # resized proportionally and JPEG-compressed before enqueueing;
-                # the original camera image remains available for the preview.
+                # Idle tracks the newest original frame. During REC, preserve the
+                # requested 640x480 detail: the old 480x360 downscale made the
+                # recorded landmarks differ from the full-resolution preview.
+                # Only reduce cameras that return a larger-than-requested image.
                 with self._capture_mode_lock:
                     recording = self._recording_capture and not self._draining_capture
                     idle_tracking = not self._recording_capture and not self._draining_capture
@@ -491,21 +492,24 @@ class CameraWorker(QThread):
                     source_height, source_width = frame.shape[:2]
                     resize_factor = min(
                         1.0,
-                        480.0 / max(1, source_width),
-                        360.0 / max(1, source_height),
+                        self.REQUESTED_WIDTH / max(1, source_width),
+                        self.REQUESTED_HEIGHT / max(1, source_height),
                     )
-                    inference_frame = cv2.resize(
-                        frame,
-                        (
-                            max(1, int(round(source_width * resize_factor))),
-                            max(1, int(round(source_height * resize_factor))),
-                        ),
-                        interpolation=cv2.INTER_AREA,
-                    )
+                    if resize_factor < 1.0:
+                        inference_frame = cv2.resize(
+                            frame,
+                            (
+                                max(1, int(round(source_width * resize_factor))),
+                                max(1, int(round(source_height * resize_factor))),
+                            ),
+                            interpolation=cv2.INTER_AREA,
+                        )
+                    else:
+                        inference_frame = frame
                     encoded_ok, encoded_frame = cv2.imencode(
                         ".jpg",
                         inference_frame,
-                        [cv2.IMWRITE_JPEG_QUALITY, 92],
+                        [cv2.IMWRITE_JPEG_QUALITY, 94],
                     )
                     if encoded_ok:
                         with self._capture_mode_lock:
