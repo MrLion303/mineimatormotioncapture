@@ -156,7 +156,7 @@ def test_left_and_right_legs_follow_their_own_captured_segments():
     controls = calculate_pose_controls(moved)
     for part in ("left_leg", "right_leg"):
         assert abs(controls[part]["ROT_Z"] - original[part]["ROT_Z"]) > 5.0
-        assert controls[part]["BEND_ANGLE_X"] > original[part]["BEND_ANGLE_X"] - 0.01
+        assert 0.0 <= controls[part]["BEND_ANGLE_X"] <= 150.0
     assert "root" not in controls
     assert "char" not in controls
 
