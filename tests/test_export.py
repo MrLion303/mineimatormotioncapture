@@ -270,6 +270,36 @@ def test_template_hierarchy_detects_body_children_and_root_legs(tmp_path):
     assert static_fields["right_arm"]["POS_Z"] == -0.43
 
 
+def test_torso_only_twist_stays_on_body_and_does_not_turn_character_root():
+    neutral = standing_pose()
+    turned = standing_pose()
+    angle = math.radians(65.0)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+
+    # Rotate the upper body landmarks only; pelvis and legs remain fixed.
+    for index in (0, 7, 8, 11, 12, 13, 14, 15, 16):
+        x, y, z, *rest = neutral["world"][index]
+        turned["world"][index] = [
+            x * cosine + z * sine,
+            y,
+            -x * sine + z * cosine,
+            *rest,
+        ]
+
+    parents = {
+        "body": "root",
+        "head": "body",
+        "left_arm": "body",
+        "right_arm": "body",
+        "left_leg": "root",
+        "right_leg": "root",
+    }
+    controls = calculate_pose_controls(turned, neutral, part_parents=parents)
+    assert abs(controls["root"]["ROT_Z"]) < 0.5
+    assert abs(controls["body"]["ROT_Y"]) > 20.0
+
+
 def test_full_body_turn_rotates_body_and_root_parented_legs_together():
     neutral = standing_pose()
     turned = rotate_pose_y(neutral, 55.0)

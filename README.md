@@ -2,6 +2,12 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.8
+
+- La orientación global se calcula ahora desde la pelvis (caderas y rodillas), no desde el torso. Una torsión de cintura permanece en `body`; un giro de todo el cuerpo se exporta en `char.ROT_Z`.
+- Si no se puede estimar el marco de pelvis por oclusión, se usa el torso como respaldo.
+- Pruebas separadas para giro de torso y giro completo del personaje.
+
 ## Mejoras de la versión 0.2.7
 
 - La cámara ya no recibe una petición fija de 60 FPS; OpenCV usa la frecuencia que negocie el controlador.

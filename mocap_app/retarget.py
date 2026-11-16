@@ -474,20 +474,25 @@ def calculate_pose_controls(
     if current_body is None or reference_body is None:
         return {}
 
+    # The pelvis frame, estimated from hips and knees, determines whole-character
+    # facing. If the lower body is occluded, fall back to the torso frame.
+    current_root = _root_basis(pose) or current_body
+    reference_root = _root_basis(reference_pose) or reference_body
     body_delta = _relative_basis_rotation(reference_body, current_body)
+    root_delta = _relative_basis_rotation(reference_root, current_root)
+
     root_base = (base_values or {}).get("root", {})
     previous_root = (previous_controls or {}).get("root", {})
     previous_root_yaw = (
         float(previous_root.get("ROT_Z", root_base.get("ROT_Z", 0.0)))
         - float(root_base.get("ROT_Z", 0.0))
     )
-    body_angles = _quaternion_to_euler_xyz(
-        body_delta,
+    root_angles = _quaternion_to_euler_xyz(
+        root_delta,
         reference_angles=(0.0, previous_root_yaw, 0.0),
     )
-    root_yaw_delta = body_angles[1]
+    root_yaw_delta = root_angles[1]
 
-    # The supplied Mine-imator rigs rotate the whole character around Z.
     root_values = {
         "ROT_X": float(root_base.get("ROT_X", 0.0)),
         "ROT_Y": float(root_base.get("ROT_Y", 0.0)),
@@ -495,9 +500,8 @@ def calculate_pose_controls(
     }
     controls: dict[str, dict[str, float]] = {"root": root_values}
 
-    # Remove the global facing turn before writing the torso. This is the
-    # distinction that was missing in the previous export: body.ROT_Y was
-    # rotating only the torso while both legs remained under an unrotated char.
+    # Subtract only pelvis/root yaw from the torso. Any remaining torso turn,
+    # lean or twist stays local to the body track.
     root_yaw_quaternion = _quaternion_from_euler_xyz((0.0, root_yaw_delta, 0.0))
     body_local_delta = _quaternion_multiply(
         _quaternion_conjugate(root_yaw_quaternion),
@@ -530,13 +534,11 @@ def calculate_pose_controls(
             body_values["ROT_Z"] = float(base_body.get("ROT_Z", 0.0))
     controls["body"] = body_values
 
-    # The character root's orientation is the initial torso frame plus the
-    # facing delta. The legs are children of that root, not of the torso.
-    reference_root_quaternion = _quaternion_from_basis(reference_body)
+    # Rebuild the animated character-root frame from the pelvis reference.
+    reference_root_quaternion = _quaternion_from_basis(reference_root)
     current_root = _basis_from_quaternion(
         _quaternion_multiply(reference_root_quaternion, root_yaw_quaternion)
     )
-    reference_root = reference_body
 
     current_head = _head_basis(pose)
     reference_head = _head_basis(reference_pose)
