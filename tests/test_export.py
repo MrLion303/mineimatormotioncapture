@@ -55,7 +55,12 @@ def make_template(path):
     }
     timelines = [
         {"id": "folder", "type": "folder", "keyframes": {"0": {"ROT_Y": 80}, "30": {"ROT_Y": 120}}},
-        {"id": "character", "type": "char", "keyframes": {"0": {"ROT_Z": -80.0}}},
+        {
+            "id": "character",
+            "type": "char",
+            "default_values": {"POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0},
+            "keyframes": {"0": {"ROT_Z": -80.0}},
+        },
     ]
     part_ids = {part: f"part-{index}" for index, part in enumerate(parts)}
     for index, (part, values) in enumerate(parts.items()):
@@ -159,7 +164,12 @@ def test_export_preserves_template_rest_pose_and_group_transform(tmp_path):
     assert exported["format"] == 35
     assert exported["templates"][0]["model"]["name"] == "human"
     character = next(item for item in exported["timelines"] if item["type"] == "char")
-    assert character["keyframes"] == {"0": {"ROT_Z": -80.0}}
+    assert abs(character["keyframes"]["0"]["ROT_Z"] - (-80.0)) < 0.02
+    assert abs(character["keyframes"]["30"]["ROT_Z"] - (-80.0)) < 0.02
+    assert character["default_values"] == {
+        "POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0
+    }
+    assert "POS_X" not in character["keyframes"]["0"]
     folder = next(item for item in exported["timelines"] if item["type"] == "folder")
     assert folder["keyframes"] == {"0": {"ROT_Y": 80.0}}
 
@@ -208,7 +218,8 @@ def test_export_preserves_template_rest_pose_and_group_transform(tmp_path):
         )
         assert "0" in timeline["keyframes"]
         assert "30" in timeline["keyframes"]
-    assert result["total_keyframes"] == 6 * 31
+    assert result["total_keyframes"] == 7 * 31
+    assert result["keyframe_counts"]["root"] == 31
 
 
 def test_export_rejects_empty_capture(tmp_path):
@@ -259,37 +270,6 @@ def test_template_hierarchy_detects_body_children_and_root_legs(tmp_path):
     assert static_fields["right_arm"]["POS_Z"] == -0.43
 
 
-def test_legs_do_not_counter_rotate_when_only_torso_turns():
-    neutral = standing_pose()
-    turned = standing_pose()
-    angle = math.radians(65.0)
-    cosine = math.cos(angle)
-    sine = math.sin(angle)
-
-    # Turn head, shoulders and arms while leaving pelvis and legs fixed.
-    for index in (0, 7, 8, 11, 12, 13, 14, 15, 16):
-        x, y, z, *rest = neutral["world"][index]
-        turned["world"][index] = [
-            x * cosine + z * sine,
-            y,
-            -x * sine + z * cosine,
-            *rest,
-        ]
-
-    parents = {
-        "body": "root",
-        "head": "body",
-        "left_arm": "body",
-        "right_arm": "body",
-        "left_leg": "root",
-        "right_leg": "root",
-    }
-    controls = calculate_pose_controls(turned, neutral, part_parents=parents)
-    assert abs(controls["body"]["ROT_Y"]) > 20.0
-    assert abs(controls["left_leg"]["ROT_Y"]) < 0.1
-    assert abs(controls["right_leg"]["ROT_Y"]) < 0.1
-
-
 def test_full_body_turn_rotates_body_and_root_parented_legs_together():
     neutral = standing_pose()
     turned = rotate_pose_y(neutral, 55.0)
@@ -302,9 +282,10 @@ def test_full_body_turn_rotates_body_and_root_parented_legs_together():
         "right_leg": "root",
     }
     controls = calculate_pose_controls(turned, neutral, part_parents=parents)
-    assert abs(abs(controls["body"]["ROT_Y"]) - 55.0) < 0.5
-    assert abs(abs(controls["left_leg"]["ROT_Y"]) - 55.0) < 0.5
-    assert abs(abs(controls["right_leg"]["ROT_Y"]) - 55.0) < 0.5
+    assert abs(abs(controls["root"]["ROT_Z"]) - 55.0) < 0.5
+    assert abs(controls["body"]["ROT_Y"]) < 0.5
+    assert abs(controls["left_leg"]["ROT_Y"]) < 0.5
+    assert abs(controls["right_leg"]["ROT_Y"]) < 0.5
 
 
 def test_euler_conversion_stays_continuous_when_yaw_crosses_90_degrees():
@@ -316,3 +297,36 @@ def test_euler_conversion_stays_continuous_when_yaw_crosses_90_degrees():
     assert abs(current[0]) < 0.1
     assert abs(current[1] - 100.0) < 0.1
     assert abs(current[2]) < 0.1
+
+
+def test_export_places_global_facing_rotation_on_char_root(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "turned.miobject"
+    make_template(template_path)
+
+    neutral = standing_pose()
+    turned = rotate_pose_y(neutral, 55.0)
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, neutral), (1.0, turned)],
+        fps=30,
+        duration_seconds=1.0,
+        optimize_keyframes=False,
+        smooth_motion=False,
+    )
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    character = next(item for item in exported["timelines"] if item["type"] == "char")
+    body = next(
+        item for item in exported["timelines"]
+        if item.get("model_part_name") == "body"
+    )
+
+    first_root_yaw = character["keyframes"]["0"]["ROT_Z"]
+    last_root_yaw = character["keyframes"]["30"]["ROT_Z"]
+    first_body_yaw = body["keyframes"]["0"]["ROT_Y"]
+    last_body_yaw = body["keyframes"]["30"]["ROT_Y"]
+
+    assert abs(abs(last_root_yaw - first_root_yaw) - 55.0) < 0.5
+    assert abs(last_body_yaw - first_body_yaw) < 0.5

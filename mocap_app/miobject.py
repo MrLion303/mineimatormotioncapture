@@ -16,6 +16,7 @@ PART_FIELDS = {
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "left_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
+    "root": ("ROT_X", "ROT_Y", "ROT_Z"),
 }
 
 KEYFRAME_ANGLE_THRESHOLD = 0.18
@@ -184,6 +185,65 @@ def _template_body_bend_axes(data: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _template_character_timeline(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Find the character timeline that directly owns the human body timeline."""
+    timelines = [
+        timeline
+        for timeline in data.get("timelines", [])
+        if isinstance(timeline, dict)
+    ]
+    by_id = {
+        str(timeline.get("id")): timeline
+        for timeline in timelines
+        if timeline.get("id") is not None
+    }
+    body = next(
+        (
+            timeline for timeline in timelines
+            if timeline.get("type") == "bodypart"
+            and timeline.get("model_part_name") == "body"
+        ),
+        None,
+    )
+    if body is not None and body.get("parent") is not None:
+        parent = by_id.get(str(body.get("parent")))
+        if parent is not None and parent.get("type") == "char":
+            return parent
+    return next(
+        (timeline for timeline in timelines if timeline.get("type") == "char"),
+        None,
+    )
+
+
+def _template_root_baselines(data: dict[str, Any]) -> dict[str, float]:
+    timeline = _template_character_timeline(data)
+    if timeline is None:
+        raise MiobjectError("La plantilla humana no contiene una pista de personaje (char).")
+    values: dict[str, Any] = {}
+    defaults = timeline.get("default_values")
+    if isinstance(defaults, dict):
+        values.update(defaults)
+    values.update(_first_keyframe_data(timeline))
+    return {
+        field: float(values.get(field, 0.0))
+        for field in PART_FIELDS["root"]
+    }
+
+
+def _template_root_static_fields(data: dict[str, Any]) -> dict[str, Any]:
+    timeline = _template_character_timeline(data)
+    if timeline is None:
+        return {}
+    # Keep only explicitly keyed properties here. default_values, such as the
+    # character's scene position, remain in their original section untouched.
+    values = _first_keyframe_data(timeline)
+    return {
+        str(key): value
+        for key, value in values.items()
+        if key not in PART_FIELDS["root"] and key != "TRANSITION"
+    }
+
+
 def _template_baselines(data: dict[str, Any]) -> dict[str, dict[str, float]]:
     baselines: dict[str, dict[str, float]] = {}
     for timeline in data.get("timelines", []):
@@ -308,6 +368,14 @@ def export_miobject(
 
     reference_pose = _reference_pose(stabilized)
     baselines = _template_baselines(data)
+    baselines["root"] = _template_root_baselines(data)
+    character_timeline = _template_character_timeline(data)
+    character_timeline_id = (
+        str(character_timeline.get("id"))
+        if character_timeline is not None and character_timeline.get("id") is not None
+        else None
+    )
+    root_static_fields = _template_root_static_fields(data)
     part_parents = _template_part_parents(data)
     static_part_fields = _template_static_part_fields(data)
     body_bend_axes = _template_body_bend_axes(data)
@@ -393,6 +461,20 @@ def export_miobject(
         if timeline_type == "folder":
             # Freeze the initial transform so the template's group offset is retained.
             _static_first_keyframe(timeline)
+        elif timeline_type == "char":
+            if character_timeline_id is not None and str(timeline.get("id")) == character_timeline_id:
+                fields = PART_FIELDS["root"]
+                values = part_frame_values["root"]
+                selected = _select_keyframes(values, fields, int(fps), optimize_keyframes)
+                timeline["keyframes"] = {}
+                for frame in selected:
+                    keyframe_values = dict(root_static_fields)
+                    keyframe_values.update({
+                        field: round(float(values[frame][field]), 4)
+                        for field in fields
+                    })
+                    timeline["keyframes"][str(frame)] = keyframe_values
+                keyframe_counts["root"] = len(selected)
         elif timeline_type == "bodypart":
             part = timeline.get("model_part_name")
             if part in PART_FIELDS:

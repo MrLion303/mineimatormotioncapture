@@ -290,6 +290,28 @@ def _quaternion_from_basis(basis: Basis) -> Quaternion:
     return _quaternion_normalize(q)
 
 
+def _basis_from_quaternion(q: Quaternion) -> Basis:
+    """Build an orthonormal basis from a quaternion (basis axes are matrix columns)."""
+    w, x, y, z = _quaternion_normalize(q)
+    return (
+        (
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y + w * z),
+            2.0 * (x * z - w * y),
+        ),
+        (
+            2.0 * (x * y - w * z),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z + w * x),
+        ),
+        (
+            2.0 * (x * z + w * y),
+            2.0 * (y * z - w * x),
+            1.0 - 2.0 * (x * x + y * y),
+        ),
+    )
+
+
 def _quaternion_between_vectors(start: Vector, end: Vector) -> Quaternion:
     a = _normalize(start)
     b = _normalize(end)
@@ -389,7 +411,6 @@ def _limb_controls(
     reference_body: Basis,
     current_root: Basis,
     reference_root: Basis,
-    root_delta: Quaternion,
     part: str,
     indices: tuple[int, int, int],
     base_values: dict[str, dict[str, float]] | None,
@@ -406,25 +427,16 @@ def _limb_controls(
     if parent_part == "body":
         current_parent = current_body
         reference_parent = reference_body
-        inherits_root = False
     else:
         current_parent = current_root
         reference_parent = reference_root
-        inherits_root = True
 
     current_vector = _to_local(_sub(current[1], current[0]), current_parent)
     reference_vector = _to_local(_sub(reference[1], reference[0]), reference_parent)
     if _length(current_vector) < 1e-4 or _length(reference_vector) < 1e-4:
         return None
 
-    local_delta = _quaternion_between_vectors(reference_vector, current_vector)
-    # Legs are direct children of the character root in the supplied rigs.
-    # They inherit pelvis yaw, but do not compensate for a torso-only twist.
-    delta_q = (
-        _quaternion_multiply(root_delta, local_delta)
-        if inherits_root
-        else local_delta
-    )
+    delta_q = _quaternion_between_vectors(reference_vector, current_vector)
     result = _apply_rotation_delta(
         base_values,
         part,
@@ -450,38 +462,81 @@ def calculate_pose_controls(
     body_bend_axes: tuple[str, ...] = (),
     previous_controls: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Calculate local rotations using the actual Mine-imator part hierarchy."""
+    """Retarget camera motion to Mine-imator's character, torso and limb hierarchy.
+
+    Overall facing direction is written to the character/root track (ROT_Z),
+    while the torso receives only its local lean/twist. Arms/head are relative
+    to the torso; legs are relative to the character root.
+    """
     reference_pose = reference_pose or pose
     current_body = _body_basis(pose)
     reference_body = _body_basis(reference_pose)
     if current_body is None or reference_body is None:
         return {}
 
-    current_root = _root_basis(pose) or current_body
-    reference_root = _root_basis(reference_pose) or reference_body
     body_delta = _relative_basis_rotation(reference_body, current_body)
-    root_delta = _relative_basis_rotation(reference_root, current_root)
+    root_base = (base_values or {}).get("root", {})
+    previous_root = (previous_controls or {}).get("root", {})
+    previous_root_yaw = (
+        float(previous_root.get("ROT_Z", root_base.get("ROT_Z", 0.0)))
+        - float(root_base.get("ROT_Z", 0.0))
+    )
+    body_angles = _quaternion_to_euler_xyz(
+        body_delta,
+        reference_angles=(0.0, previous_root_yaw, 0.0),
+    )
+    root_yaw_delta = body_angles[1]
 
-    controls: dict[str, dict[str, float]] = {}
+    # The supplied Mine-imator rigs rotate the whole character around Z.
+    root_values = {
+        "ROT_X": float(root_base.get("ROT_X", 0.0)),
+        "ROT_Y": float(root_base.get("ROT_Y", 0.0)),
+        "ROT_Z": float(root_base.get("ROT_Z", 0.0)) + root_yaw_delta,
+    }
+    controls: dict[str, dict[str, float]] = {"root": root_values}
+
+    # Remove the global facing turn before writing the torso. This is the
+    # distinction that was missing in the previous export: body.ROT_Y was
+    # rotating only the torso while both legs remained under an unrotated char.
+    root_yaw_quaternion = _quaternion_from_euler_xyz((0.0, root_yaw_delta, 0.0))
+    body_local_delta = _quaternion_multiply(
+        _quaternion_conjugate(root_yaw_quaternion),
+        body_delta,
+    )
     body_previous_delta = _previous_rotation_delta(
         "body", base_values, previous_controls, body_bend_axes
     )
     body_values = _apply_rotation_delta(
-        base_values, "body", body_delta, previous_delta=body_previous_delta
+        base_values,
+        "body",
+        body_local_delta,
+        previous_delta=body_previous_delta,
     )
     if body_bend_axes:
         base_body = (base_values or {}).get("body", {})
-        delta_x, _delta_y, delta_z = _quaternion_to_euler_xyz(
-            body_delta,
+        local_x, _local_y, local_z = _quaternion_to_euler_xyz(
+            body_local_delta,
             reference_angles=body_previous_delta,
         )
         if "BEND_ANGLE_X" in body_bend_axes:
-            body_values["BEND_ANGLE_X"] = float(base_body.get("BEND_ANGLE_X", 0.0)) + delta_x
+            body_values["BEND_ANGLE_X"] = (
+                float(base_body.get("BEND_ANGLE_X", 0.0)) + local_x
+            )
             body_values["ROT_X"] = float(base_body.get("ROT_X", 0.0))
         if "BEND_ANGLE_Z" in body_bend_axes:
-            body_values["BEND_ANGLE_Z"] = float(base_body.get("BEND_ANGLE_Z", 0.0)) + delta_z
+            body_values["BEND_ANGLE_Z"] = (
+                float(base_body.get("BEND_ANGLE_Z", 0.0)) + local_z
+            )
             body_values["ROT_Z"] = float(base_body.get("ROT_Z", 0.0))
     controls["body"] = body_values
+
+    # The character root's orientation is the initial torso frame plus the
+    # facing delta. The legs are children of that root, not of the torso.
+    reference_root_quaternion = _quaternion_from_basis(reference_body)
+    current_root = _basis_from_quaternion(
+        _quaternion_multiply(reference_root_quaternion, root_yaw_quaternion)
+    )
+    reference_root = reference_body
 
     current_head = _head_basis(pose)
     reference_head = _head_basis(reference_pose)
@@ -494,15 +549,11 @@ def calculate_pose_controls(
             current_head_local = _basis_in_parent(current_head, current_root)
             reference_head_local = _basis_in_parent(reference_head, reference_root)
         head_delta = _relative_basis_rotation(reference_head_local, current_head_local)
-        if head_parent != "body":
-            head_delta = _quaternion_multiply(root_delta, head_delta)
         controls["head"] = _apply_rotation_delta(
             base_values,
             "head",
             head_delta,
-            previous_delta=_previous_rotation_delta(
-                "head", base_values, previous_controls
-            ),
+            previous_delta=_previous_rotation_delta("head", base_values, previous_controls),
         )
 
     limb_specs = (
@@ -519,7 +570,6 @@ def calculate_pose_controls(
             reference_body,
             current_root,
             reference_root,
-            root_delta,
             part,
             indices,
             base_values,

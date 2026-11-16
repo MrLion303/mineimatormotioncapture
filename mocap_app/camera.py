@@ -174,7 +174,6 @@ class CameraWorker(QThread):
 
     REQUESTED_WIDTH = 640
     REQUESTED_HEIGHT = 480
-    REQUESTED_FPS = 60
 
     def __init__(
         self,
@@ -183,12 +182,15 @@ class CameraWorker(QThread):
         parent=None,
         camera_backend: int | None = None,
         camera_name: str | None = None,
+        preview_fps: int = 30,
     ):
         super().__init__(parent)
         self.camera_index = camera_index
         self.camera_backend = camera_backend
         self.camera_name = camera_name or f"Cámara {camera_index}"
         self.model_variant = model_variant if model_variant in MODEL_VARIANTS else "full"
+        self._preview_fps = max(10, min(60, int(preview_fps)))
+        self._preview_interval = 1.0 / self._preview_fps
         self._running = True
 
         # La cámara y MediaPipe trabajan por separado para que el análisis no
@@ -207,6 +209,10 @@ class CameraWorker(QThread):
 
     def stop(self) -> None:
         self._running = False
+
+    def set_preview_fps(self, fps: int) -> None:
+        self._preview_fps = max(10, min(60, int(fps)))
+        self._preview_interval = 1.0 / self._preview_fps
 
     def latest_preview_frame(self) -> tuple[int, QImage] | None:
         """Devuelve el frame más reciente sin crear una cola de señales Qt."""
@@ -352,7 +358,6 @@ class CameraWorker(QThread):
             camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.REQUESTED_WIDTH)
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.REQUESTED_HEIGHT)
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            camera.set(cv2.CAP_PROP_FPS, self.REQUESTED_FPS)
 
             model_path = default_model_path(self.model_variant)
             if not model_path.exists():
@@ -363,7 +368,7 @@ class CameraWorker(QThread):
 
             self.status.emit(
                 f"Preparando seguimiento corporal ({MODEL_VARIANTS[self.model_variant]['label']}). "
-                "La vista previa solicitará 60 FPS."
+                "La cámara usará la frecuencia disponible del dispositivo."
             )
             self._inference_thread = threading.Thread(
                 target=self._run_pose_inference,
@@ -383,9 +388,10 @@ class CameraWorker(QThread):
             self.ready.emit()
 
             failed_reads = 0
-            preview_frames = 0
+            camera_frames = 0
             stats_started_at = time.monotonic()
             last_timestamp_ms = -1
+            last_preview_published = 0.0
 
             while self._running:
                 ok, frame = camera.read()
@@ -398,6 +404,7 @@ class CameraWorker(QThread):
 
                 failed_reads = 0
                 captured_at = time.monotonic()
+                camera_frames += 1
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
@@ -408,31 +415,35 @@ class CameraWorker(QThread):
                     (inference_frame, captured_at, timestamp_ms),
                 )
 
-                with self._landmarks_lock:
-                    latest_landmarks = self._latest_image_landmarks
-
-                if latest_landmarks:
-                    self._draw_pose(frame, latest_landmarks)
-
-                mirrored = cv2.flip(frame, 1)
-                rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
-                height, width, _ = rgb_preview.shape
-                image = QImage(
-                    rgb_preview.data,
-                    width,
-                    height,
-                    int(rgb_preview.strides[0]),
-                    QImage.Format.Format_RGB888,
-                ).copy()
-                self._publish_preview_frame(image)
-
-                preview_frames += 1
                 now = time.monotonic()
                 interval = now - stats_started_at
                 if interval >= 1.0:
-                    self.preview_fps.emit(preview_frames / interval)
-                    preview_frames = 0
+                    # CAM reports the camera's actual delivered rate, not the
+                    # user-selected preview refresh limit.
+                    self.preview_fps.emit(camera_frames / interval)
+                    camera_frames = 0
                     stats_started_at = now
+
+                if captured_at - last_preview_published >= self._preview_interval:
+                    with self._landmarks_lock:
+                        latest_landmarks = self._latest_image_landmarks
+
+                    preview_frame = frame.copy()
+                    if latest_landmarks:
+                        self._draw_pose(preview_frame, latest_landmarks)
+
+                    mirrored = cv2.flip(preview_frame, 1)
+                    rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
+                    height, width, _ = rgb_preview.shape
+                    image = QImage(
+                        rgb_preview.data,
+                        width,
+                        height,
+                        int(rgb_preview.strides[0]),
+                        QImage.Format.Format_RGB888,
+                    ).copy()
+                    self._publish_preview_frame(image)
+                    last_preview_published = captured_at
 
         except Exception as exc:
             self.failed.emit(str(exc))

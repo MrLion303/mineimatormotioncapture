@@ -2,6 +2,14 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.7
+
+- La cámara ya no recibe una petición fija de 60 FPS; OpenCV usa la frecuencia que negocie el controlador.
+- Control independiente de **FPS de vista previa** (10–60, predeterminado 30), sin cambiar la frecuencia de captura ni la de exportación.
+- Se limita la conversión y publicación de imágenes al ritmo de vista previa elegido; el hilo de captura sigue leyendo y enviando frames recientes al análisis.
+- Página desplazable, ventana mínima más compacta y vista previa adaptable para evitar que los controles se compriman o se superpongan.
+- El giro de orientación del personaje se exporta en `char.ROT_Z`, conforme a las pistas de los rigs NICO y GREGOR; el torso conserva su inclinación local.
+
 ## Mejoras de la versión 0.2.6
 
 - Conversión de cuaterniones a Euler con continuidad temporal: el retargeter escoge la rama equivalente más cercana al fotograma anterior y evita saltos de 180° al girar más allá de 90°.
@@ -68,7 +76,7 @@ python main.py
 ## Flujo de uso
 
 1. Conecta la webcam.
-2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento.
+2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento. Ajusta por separado los FPS de la vista previa; la cámara no se fuerza a 60 FPS.
 3. Carga tu plantilla humana .miobject.
 4. Define la duración y los FPS.
 5. Colócate de cuerpo completo dentro del encuadre y mantén tu postura inicial durante la cuenta regresiva.

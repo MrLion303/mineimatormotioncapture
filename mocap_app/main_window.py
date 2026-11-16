@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -31,8 +33,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mine-imator Motion Capture")
-        self.setMinimumSize(1080, 760)
-        self.resize(1320, 900)
+        self.setMinimumSize(900, 650)
+        self.resize(1180, 800)
 
         self.camera_worker: CameraWorker | None = None
         self.camera_devices: list[CameraDevice] = []
@@ -57,24 +59,31 @@ class MainWindow(QMainWindow):
         self.record_timer.timeout.connect(self._update_recording)
 
         self.preview_timer = QTimer(self)
-        self.preview_timer.setInterval(16)
+        self.preview_timer.setInterval(33)
         self.preview_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.preview_timer.timeout.connect(self._refresh_preview)
         self._last_preview_sequence = 0
 
         self._build_ui()
+        self._update_preview_rate(self.preview_fps_spin.value())
         self._apply_style()
         self._update_actions()
         self._set_status("Conecta una cámara y carga una plantilla humana de Mine-imator.")
 
     def _build_ui(self) -> None:
+        scroll = QScrollArea(self)
+        scroll.setObjectName("pageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
         central = QWidget()
         central.setObjectName("central")
-        self.setCentralWidget(central)
+        scroll.setWidget(central)
+        self.setCentralWidget(scroll)
 
         page = QVBoxLayout(central)
-        page.setContentsMargins(26, 22, 26, 22)
-        page.setSpacing(18)
+        page.setContentsMargins(18, 16, 18, 16)
+        page.setSpacing(14)
 
         header = QHBoxLayout()
         header.setSpacing(14)
@@ -152,7 +161,8 @@ class MainWindow(QMainWindow):
         preview_grid.setContentsMargins(0, 0, 0, 0)
         self.preview = QLabel("Conecta una cámara para comenzar el seguimiento.")
         self.preview.setObjectName("preview")
-        self.preview.setMinimumSize(620, 410)
+        self.preview.setMinimumSize(480, 320)
+        self.preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setWordWrap(True)
 
@@ -222,13 +232,14 @@ class MainWindow(QMainWindow):
         capture_layout.addWidget(self._field_label("DISPOSITIVO"))
         camera_row = QHBoxLayout()
         self.camera_combo = QComboBox()
-        self.camera_combo.setMinimumWidth(210)
+        self.camera_combo.setMinimumWidth(0)
         self.camera_combo.currentIndexChanged.connect(self._on_camera_selection_changed)
         camera_row.addWidget(self.camera_combo, 1)
 
         self.refresh_camera_button = QPushButton("Actualizar")
         self.refresh_camera_button.setObjectName("secondaryButton")
-        self.refresh_camera_button.setMinimumWidth(92)
+        self.refresh_camera_button.setMinimumWidth(78)
+        self.refresh_camera_button.setMaximumWidth(112)
         self.refresh_camera_button.clicked.connect(self._refresh_camera_list)
         camera_row.addWidget(self.refresh_camera_button)
         capture_layout.addLayout(camera_row)
@@ -262,6 +273,22 @@ class MainWindow(QMainWindow):
         numeric_grid.addWidget(fps_label, 0, 1)
         numeric_grid.addWidget(self.fps_spin, 1, 1)
         capture_layout.addLayout(numeric_grid)
+
+        preview_rate_row = QHBoxLayout()
+        preview_rate_label = self._field_label("FPS DE VISTA PREVIA")
+        self.preview_fps_spin = QSpinBox()
+        self.preview_fps_spin.setRange(10, 60)
+        self.preview_fps_spin.setValue(30)
+        self.preview_fps_spin.setSuffix(" FPS")
+        self.preview_fps_spin.setToolTip(
+            "Limita cuántas veces por segundo se actualiza la imagen. "
+            "No cambia los FPS que entrega la cámara."
+        )
+        self.preview_fps_spin.valueChanged.connect(self._update_preview_rate)
+        preview_rate_row.addWidget(preview_rate_label)
+        preview_rate_row.addStretch()
+        preview_rate_row.addWidget(self.preview_fps_spin)
+        capture_layout.addLayout(preview_rate_row)
 
         options_panel = QFrame()
         options_panel.setObjectName("innerPanel")
@@ -332,8 +359,9 @@ class MainWindow(QMainWindow):
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "Heavy es el modelo más exigente; Full equilibra calidad y velocidad, "
-            "y Lite prioriza rendimiento. La profundidad se estima con la webcam."
+            "Heavy es el modelo más exigente; Full equilibra calidad y velocidad; "
+            "Lite consume menos recursos. Los FPS de vista previa son independientes "
+            "de la frecuencia real de la cámara."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
@@ -428,6 +456,10 @@ class MainWindow(QMainWindow):
             QLabel#sectionHint {
                 color: #85877b;
                 font-size: 8pt;
+            }
+            QScrollArea#pageScroll {
+                background: #11120f;
+                border: 0;
             }
             QLabel#preview {
                 background: #090a08;
@@ -530,6 +562,7 @@ class MainWindow(QMainWindow):
                 margin-top: 2px;
             }
             QComboBox, QSpinBox {
+                min-width: 0;
                 background: #13140f;
                 color: #ecece4;
                 border: 1px solid #36382e;
@@ -582,10 +615,11 @@ class MainWindow(QMainWindow):
                 border: 1px solid #a9c87d;
             }
             QPushButton {
-                min-height: 37px;
+                min-height: 35px;
+                min-width: 0;
                 border: 1px solid transparent;
                 border-radius: 8px;
-                padding: 0 13px;
+                padding: 5px 10px;
                 font-weight: 800;
                 letter-spacing: 0.3px;
             }
@@ -698,6 +732,12 @@ class MainWindow(QMainWindow):
                 "No se detectaron cámaras. Conecta una webcam y pulsa Actualizar."
             )
 
+    def _update_preview_rate(self, fps: int) -> None:
+        fps = max(10, min(60, int(fps)))
+        self.preview_timer.setInterval(max(1, round(1000.0 / fps)))
+        if self.camera_worker is not None:
+            self.camera_worker.set_preview_fps(fps)
+
     def _toggle_camera(self) -> None:
         if self.camera_worker is not None:
             self._disconnect_camera()
@@ -720,6 +760,7 @@ class MainWindow(QMainWindow):
             self,
             camera_backend=device.backend,
             camera_name=device.name,
+            preview_fps=self.preview_fps_spin.value(),
         )
         self.camera_worker = worker
         worker.pose_ready.connect(self._receive_pose)
@@ -741,6 +782,7 @@ class MainWindow(QMainWindow):
         self.camera_combo.setEnabled(False)
         self.refresh_camera_button.setEnabled(False)
         self.quality_combo.setEnabled(False)
+        self.preview_fps_spin.setEnabled(True)
         self.camera_state_label.setText("CONECTANDO")
         self._set_status(f"Conectando a {device.name}...")
         worker.start()
@@ -767,7 +809,7 @@ class MainWindow(QMainWindow):
         self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CAMBIANDO")
         self.preview.clear()
-        self.preview.setText(f"Conectando a Cámara {selected_index}...")
+        self.preview.setText(f"Conectando a {device.name}...")
         self._set_status(f"Cambiando a {device.name}...")
         self.camera_worker.stop()
 
@@ -778,6 +820,7 @@ class MainWindow(QMainWindow):
         self.camera_combo.setEnabled(self.state == "idle")
         self.refresh_camera_button.setEnabled(False)
         self.quality_combo.setEnabled(False)
+        self.preview_fps_spin.setEnabled(True)
         self.camera_state_label.setText("CONECTADA")
         self._update_actions()
 
@@ -995,6 +1038,7 @@ class MainWindow(QMainWindow):
         )
         self.refresh_camera_button.setEnabled(self.camera_worker is None)
         self.quality_combo.setEnabled(self.camera_worker is None)
+        self.preview_fps_spin.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
         self.record_button.setEnabled(self.camera_ready)
