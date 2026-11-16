@@ -2,6 +2,14 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
+## Mejoras de la versión 0.2.3
+
+- La cámara solicita 60 FPS en lugar de estar limitada a 30 FPS.
+- La captura de vídeo ya no espera a que MediaPipe termine de analizar cada frame.
+- El seguimiento corporal corre en un hilo independiente y usa una cola corta que prioriza los frames recientes para evitar retrasos acumulados.
+- La interfaz muestra por separado los FPS medidos de la cámara y del análisis de IA.
+- La vista previa toma el frame más reciente cada 16 ms, sin acumular señales antiguas en la cola de eventos.
+
 ## Mejoras de la versión 0.2.2
 
 - Interfaz renovada con una paleta dark neutral de grafito y negro, acentos verde salvia y paneles más claros de leer.

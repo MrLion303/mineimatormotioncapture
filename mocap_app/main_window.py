@@ -54,6 +54,11 @@ class MainWindow(QMainWindow):
         self.record_timer.setInterval(50)
         self.record_timer.timeout.connect(self._update_recording)
 
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setInterval(16)
+        self.preview_timer.timeout.connect(self._refresh_preview)
+        self._last_preview_sequence = 0
+
         self._build_ui()
         self._apply_style()
         self._update_actions()
@@ -122,6 +127,16 @@ class MainWindow(QMainWindow):
         preview_heading.addWidget(preview_subtitle)
         preview_header.addLayout(preview_heading)
         preview_header.addStretch()
+
+        self.preview_fps_label = QLabel("CAM  -- FPS")
+        self.preview_fps_label.setObjectName("fpsBadge")
+        self.preview_fps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_header.addWidget(self.preview_fps_label)
+
+        self.pose_fps_label = QLabel("TRACK  -- FPS")
+        self.pose_fps_label.setObjectName("poseBadge")
+        self.pose_fps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_header.addWidget(self.pose_fps_label)
 
         self.camera_state_label = QLabel("SIN CONEXIÓN")
         self.camera_state_label.setObjectName("statePill")
@@ -451,6 +466,24 @@ class MainWindow(QMainWindow):
                 font-weight: 800;
                 letter-spacing: 0.5px;
             }
+            QLabel#fpsBadge {
+                color: #c2d69f;
+                background: #25291e;
+                border: 1px solid #3b422e;
+                border-radius: 7px;
+                padding: 6px 8px;
+                font-size: 7.5pt;
+                font-weight: 800;
+            }
+            QLabel#poseBadge {
+                color: #c3c5b8;
+                background: #25261f;
+                border: 1px solid #3a3b30;
+                border-radius: 7px;
+                padding: 6px 8px;
+                font-size: 7.5pt;
+                font-weight: 800;
+            }
             QLabel#tipMark {
                 color: #c0d699;
                 background: #29301f;
@@ -626,14 +659,20 @@ class MainWindow(QMainWindow):
         model_variant = str(self.quality_combo.currentData())
         worker = CameraWorker(camera_index, model_variant, self)
         self.camera_worker = worker
-        worker.frame_ready.connect(self._show_frame)
         worker.pose_ready.connect(self._receive_pose)
+        worker.preview_fps.connect(self._update_preview_fps)
+        worker.pose_fps.connect(self._update_pose_fps)
         worker.status.connect(self._set_status)
         worker.ready.connect(self._camera_ready)
         worker.failed.connect(self._camera_error)
         worker.finished.connect(lambda worker=worker: self._camera_finished(worker))
 
         self.camera_ready = False
+        self._last_preview_sequence = 0
+        self.last_image = None
+        self.preview_fps_label.setText("CAM  -- FPS")
+        self.pose_fps_label.setText("TRACK  -- FPS")
+        self.preview_timer.start()
         self.camera_button.setText("Conectando...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
@@ -652,6 +691,7 @@ class MainWindow(QMainWindow):
 
         self._camera_switch_pending = True
         self.camera_ready = False
+        self.preview_timer.stop()
         self.camera_button.setText("Cambiando cámara...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
@@ -685,12 +725,20 @@ class MainWindow(QMainWindow):
 
         if self._camera_switch_pending:
             self._camera_switch_pending = False
+            self._last_preview_sequence = 0
+            self.last_image = None
             self._set_status(
                 f"Conectando a Cámara {int(self.camera_combo.currentData())}..."
             )
             self._start_camera_worker()
             return
 
+        self.preview_timer.stop()
+        self.last_image = None
+        self.preview.setPixmap(QPixmap())
+        self.preview.setText("Conecta una cámara para comenzar el seguimiento.")
+        self.preview_fps_label.setText("CAM  -- FPS")
+        self.pose_fps_label.setText("TRACK  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(True)
@@ -707,10 +755,17 @@ class MainWindow(QMainWindow):
         self.camera_worker = None
         self.camera_ready = False
         self._camera_switch_pending = False
+        self.preview_timer.stop()
         if worker is not None:
             worker.stop()
             worker.wait()
             worker.deleteLater()
+        self.last_image = None
+        self._last_preview_sequence = 0
+        self.preview.setPixmap(QPixmap())
+        self.preview.setText("Conecta una cámara para comenzar el seguimiento.")
+        self.preview_fps_label.setText("CAM  -- FPS")
+        self.pose_fps_label.setText("TRACK  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(True)
@@ -719,25 +774,49 @@ class MainWindow(QMainWindow):
         self._update_actions()
         self._set_status("Cámara desconectada.")
 
-    def _show_frame(self, image: QImage) -> None:
-        self.last_image = image
-        self._render_preview()
+    def _refresh_preview(self) -> None:
+        worker = self.camera_worker
+        if worker is None:
+            return
 
-    def _render_preview(self) -> None:
+        latest = worker.latest_preview_frame()
+        if latest is None:
+            return
+
+        sequence, image = latest
+        if sequence == self._last_preview_sequence:
+            return
+
+        self._last_preview_sequence = sequence
+        self.last_image = image
+        self._render_preview(smooth=False)
+
+    def _update_preview_fps(self, fps: float) -> None:
+        self.preview_fps_label.setText(f"CAM  {fps:04.1f} FPS")
+
+    def _update_pose_fps(self, fps: float) -> None:
+        self.pose_fps_label.setText(f"TRACK  {fps:04.1f} FPS")
+
+    def _render_preview(self, smooth: bool = False) -> None:
         if self.last_image is None:
             return
         pixmap = QPixmap.fromImage(self.last_image)
+        transformation = (
+            Qt.TransformationMode.SmoothTransformation
+            if smooth
+            else Qt.TransformationMode.FastTransformation
+        )
         self.preview.setPixmap(
             pixmap.scaled(
                 self.preview.size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+                transformation,
             )
         )
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._render_preview()
+        self._render_preview(smooth=True)
 
     def _receive_pose(self, pose: dict, captured_at: float) -> None:
         if self.state != "recording":
@@ -917,6 +996,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self.countdown_timer.stop()
         self.record_timer.stop()
+        self.preview_timer.stop()
         worker = self.camera_worker
         if worker is not None:
             worker.stop()

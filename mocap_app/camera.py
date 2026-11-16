@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import queue
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -83,11 +85,16 @@ def _download_model(target: Path, variant: str, status_callback) -> None:
 
 
 class CameraWorker(QThread):
-    frame_ready = Signal(object)
     pose_ready = Signal(object, float)
+    preview_fps = Signal(float)
+    pose_fps = Signal(float)
     status = Signal(str)
     ready = Signal()
     failed = Signal(str)
+
+    REQUESTED_WIDTH = 640
+    REQUESTED_HEIGHT = 480
+    REQUESTED_FPS = 60
 
     def __init__(self, camera_index: int, model_variant: str = "full", parent=None):
         super().__init__(parent)
@@ -95,34 +102,78 @@ class CameraWorker(QThread):
         self.model_variant = model_variant if model_variant in MODEL_VARIANTS else "full"
         self._running = True
 
+        # La cámara y MediaPipe trabajan por separado para que el análisis no
+        # bloquee la lectura ni la presentación del vídeo.
+        self._inference_queue = queue.Queue(maxsize=1)
+        self._inference_ready = threading.Event()
+        self._inference_error: str | None = None
+        self._inference_thread: threading.Thread | None = None
+
+        self._preview_lock = threading.Lock()
+        self._latest_preview: tuple[int, QImage] | None = None
+        self._preview_sequence = 0
+
+        self._landmarks_lock = threading.Lock()
+        self._latest_image_landmarks: list[list[float]] | None = None
+
     def stop(self) -> None:
         self._running = False
 
-    def run(self) -> None:
-        camera = None
+    def latest_preview_frame(self) -> tuple[int, QImage] | None:
+        """Devuelve el frame más reciente sin crear una cola de señales Qt."""
+        with self._preview_lock:
+            return self._latest_preview
+
+    def _publish_preview_frame(self, image: QImage) -> None:
+        with self._preview_lock:
+            self._preview_sequence += 1
+            self._latest_preview = (self._preview_sequence, image)
+
+    @staticmethod
+    def _enqueue_latest(target_queue: queue.Queue, item: tuple) -> None:
+        """Mantiene como máximo un frame pendiente, siempre el más reciente."""
+        try:
+            target_queue.put_nowait(item)
+            return
+        except queue.Full:
+            pass
+
+        try:
+            target_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+        try:
+            target_queue.put_nowait(item)
+        except queue.Full:
+            # Si el consumidor recuperó la cola justo ahora, no bloqueamos
+            # nunca la captura para entregar una imagen antigua.
+            pass
+
+    @staticmethod
+    def _landmark_values(points) -> list[list[float]]:
+        return [
+            [
+                float(point.x),
+                float(point.y),
+                float(point.z),
+                (
+                    1.0
+                    if getattr(point, "visibility", None) is None
+                    else float(point.visibility)
+                ),
+                (
+                    1.0
+                    if getattr(point, "presence", None) is None
+                    else float(point.presence)
+                ),
+            ]
+            for point in points
+        ]
+
+    def _run_pose_inference(self, model_path: Path) -> None:
         landmarker = None
         try:
-            self.status.emit("Abriendo cámara...")
-            backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
-            camera = cv2.VideoCapture(self.camera_index, backend)
-            if not camera.isOpened():
-                raise RuntimeError(
-                    f"No se pudo abrir la cámara {self.camera_index}. "
-                    "Prueba otro dispositivo o cierra las aplicaciones que la estén usando."
-                )
-
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            camera.set(cv2.CAP_PROP_FPS, 30)
-
-            model_path = default_model_path(self.model_variant)
-            if not model_path.exists():
-                _download_model(model_path, self.model_variant, self.status.emit)
-
-            self.status.emit(
-                f"Preparando detector de cuerpo ({MODEL_VARIANTS[self.model_variant]['label']})..."
-            )
             import mediapipe as mp
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
@@ -137,11 +188,113 @@ class CameraWorker(QThread):
                 output_segmentation_masks=False,
             )
             landmarker = vision.PoseLandmarker.create_from_options(options)
+            self._inference_ready.set()
+
+            last_timestamp_ms = -1
+            processed_frames = 0
+            stats_started_at = time.monotonic()
+
+            while self._running:
+                try:
+                    frame, captured_at, timestamp_ms = self._inference_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                timestamp_ms = max(last_timestamp_ms + 1, timestamp_ms)
+                last_timestamp_ms = timestamp_ms
+
+                result = landmarker.detect_for_video(mp_image, timestamp_ms)
+                processed_frames += 1
+
+                if result.pose_landmarks:
+                    image_landmarks = self._landmark_values(result.pose_landmarks[0])
+                    with self._landmarks_lock:
+                        self._latest_image_landmarks = image_landmarks
+
+                    if result.pose_world_landmarks:
+                        pose_data = {
+                            "world": self._landmark_values(result.pose_world_landmarks[0]),
+                            "image": image_landmarks,
+                        }
+                        self.pose_ready.emit(pose_data, captured_at)
+
+                now = time.monotonic()
+                interval = now - stats_started_at
+                if interval >= 1.0:
+                    self.pose_fps.emit(processed_frames / interval)
+                    processed_frames = 0
+                    stats_started_at = now
+
+        except Exception as exc:
+            self._inference_error = str(exc)
+            self.failed.emit(str(exc))
+            self.stop()
+        finally:
+            self._inference_ready.set()
+            if landmarker is not None:
+                try:
+                    landmarker.close()
+                except Exception:
+                    pass
+
+    def run(self) -> None:
+        camera = None
+        try:
+            self.status.emit("Abriendo cámara...")
+            backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+            camera = cv2.VideoCapture(self.camera_index, backend)
+            if not camera.isOpened():
+                raise RuntimeError(
+                    f"No se pudo abrir la cámara {self.camera_index}. "
+                    "Prueba otro dispositivo o cierra las aplicaciones que la estén usando."
+                )
+
+            # MJPG suele permitir modos de mayor frecuencia en webcams USB.
+            # Si el controlador no lo admite, OpenCV conserva el formato disponible.
+            if os.name == "nt":
+                camera.set(
+                    cv2.CAP_PROP_FOURCC,
+                    cv2.VideoWriter_fourcc(*"MJPG"),
+                )
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.REQUESTED_WIDTH)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.REQUESTED_HEIGHT)
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            camera.set(cv2.CAP_PROP_FPS, self.REQUESTED_FPS)
+
+            model_path = default_model_path(self.model_variant)
+            if not model_path.exists():
+                _download_model(model_path, self.model_variant, self.status.emit)
+
+            if not self._running:
+                return
+
+            self.status.emit(
+                f"Preparando seguimiento corporal ({MODEL_VARIANTS[self.model_variant]['label']}). "
+                "La vista previa solicitará 60 FPS."
+            )
+            self._inference_thread = threading.Thread(
+                target=self._run_pose_inference,
+                args=(model_path,),
+                name=f"PoseInference-{self.camera_index}",
+                daemon=True,
+            )
+            self._inference_thread.start()
+
+            while self._running and not self._inference_ready.wait(0.1):
+                pass
+
+            if not self._running or self._inference_error:
+                return
+
             self.status.emit("Cámara lista. Colócate de cuerpo completo frente a ella.")
             self.ready.emit()
 
-            last_timestamp_ms = -1
             failed_reads = 0
+            preview_frames = 0
+            stats_started_at = time.monotonic()
+            last_timestamp_ms = -1
 
             while self._running:
                 ok, frame = camera.read()
@@ -149,46 +302,26 @@ class CameraWorker(QThread):
                     failed_reads += 1
                     if failed_reads > 60:
                         raise RuntimeError("La cámara dejó de entregar imágenes.")
-                    time.sleep(0.01)
+                    time.sleep(0.005)
                     continue
+
                 failed_reads = 0
                 captured_at = time.monotonic()
-
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
-                if result.pose_landmarks:
-                    image_landmarks = result.pose_landmarks[0]
-                    self._draw_pose(frame, image_landmarks)
+                # Se entrega una copia al hilo de IA sin esperar a que termine.
+                inference_frame = frame.copy()
+                self._enqueue_latest(
+                    self._inference_queue,
+                    (inference_frame, captured_at, timestamp_ms),
+                )
 
-                    if result.pose_world_landmarks:
-                        world_landmarks = result.pose_world_landmarks[0]
-                        pose_data = {
-                            "world": [
-                                [
-                                    float(point.x),
-                                    float(point.y),
-                                    float(point.z),
-                                    (1.0 if getattr(point, "visibility", None) is None else float(point.visibility)),
-                                    (1.0 if getattr(point, "presence", None) is None else float(point.presence)),
-                                ]
-                                for point in world_landmarks
-                            ],
-                            "image": [
-                                [
-                                    float(point.x),
-                                    float(point.y),
-                                    float(point.z),
-                                    (1.0 if getattr(point, "visibility", None) is None else float(point.visibility)),
-                                    (1.0 if getattr(point, "presence", None) is None else float(point.presence)),
-                                ]
-                                for point in image_landmarks
-                            ],
-                        }
-                        self.pose_ready.emit(pose_data, captured_at)
+                with self._landmarks_lock:
+                    latest_landmarks = self._latest_image_landmarks
+
+                if latest_landmarks:
+                    self._draw_pose(frame, latest_landmarks)
 
                 mirrored = cv2.flip(frame, 1)
                 rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
@@ -200,29 +333,42 @@ class CameraWorker(QThread):
                     int(rgb_preview.strides[0]),
                     QImage.Format.Format_RGB888,
                 ).copy()
-                self.frame_ready.emit(image)
+                self._publish_preview_frame(image)
+
+                preview_frames += 1
+                now = time.monotonic()
+                interval = now - stats_started_at
+                if interval >= 1.0:
+                    self.preview_fps.emit(preview_frames / interval)
+                    preview_frames = 0
+                    stats_started_at = now
 
         except Exception as exc:
             self.failed.emit(str(exc))
         finally:
             self._running = False
-            if landmarker is not None:
-                try:
-                    landmarker.close()
-                except Exception:
-                    pass
             if camera is not None:
                 camera.release()
+            if self._inference_thread is not None:
+                self._inference_thread.join()
 
     @staticmethod
     def _draw_pose(frame, landmarks) -> None:
         height, width = frame.shape[:2]
         points = []
         for landmark in landmarks:
-            x = int(max(0, min(width - 1, landmark.x * width)))
-            y = int(max(0, min(height - 1, landmark.y * height)))
-            visible = float(getattr(landmark, "visibility", 1.0)) >= 0.25
-            points.append((x, y, visible))
+            if isinstance(landmark, (list, tuple)):
+                normalized_x = float(landmark[0])
+                normalized_y = float(landmark[1])
+                visibility = float(landmark[3]) if len(landmark) > 3 else 1.0
+            else:
+                normalized_x = float(landmark.x)
+                normalized_y = float(landmark.y)
+                visibility = float(getattr(landmark, "visibility", 1.0))
+
+            x = int(max(0, min(width - 1, normalized_x * width)))
+            y = int(max(0, min(height - 1, normalized_y * height)))
+            points.append((x, y, visibility >= 0.25))
 
         for start, end in POSE_CONNECTIONS:
             if points[start][2] and points[end][2]:
