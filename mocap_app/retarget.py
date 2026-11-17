@@ -6,6 +6,8 @@ from typing import Any
 
 MIN_VISIBILITY = 0.35
 _EPSILON = 1e-6
+_MIN_TORSO_HEIGHT = 0.12
+_MIN_TORSO_WIDTH = 0.045
 
 # MediaPipe world coordinates: screen-right, vertical-up is negative Y,
 # and the default front-facing depth axis points toward negative Z.
@@ -62,11 +64,13 @@ def _unit(vector):
 
 
 def _torso_frame(pose: dict[str, Any]):
-    """Build an orthonormal torso frame from shoulder and hip landmarks.
+    """Build a stable orthonormal torso frame from shoulder and hip landmarks.
 
-    The shoulder axis defines torso-facing direction. Hip width is used only
-    as a fallback because blending it into the shoulder axis underestimates
-    intentional torso twists relative to the pelvis.
+    Shoulder width is preferred because it captures torso twist. If that axis
+    becomes almost parallel to the torso's up axis, its projected width is
+    unreliable; in that case the pelvis width is used as a geometric fallback.
+    Degenerate torso height or width is rejected instead of producing a frame
+    whose axes can jump dramatically from one video frame to the next.
     """
     left_shoulder = _point(pose, 11)
     right_shoulder = _point(pose, 12)
@@ -79,23 +83,30 @@ def _torso_frame(pose: dict[str, Any]):
 
     shoulder_mid = _midpoint(left_shoulder, right_shoulder)
     hip_mid = _midpoint(left_hip, right_hip)
-    up = _unit(_subtract(shoulder_mid, hip_mid))
+    torso_axis = _subtract(shoulder_mid, hip_mid)
+    if _length(torso_axis) < _MIN_TORSO_HEIGHT:
+        return None
+
+    up = _unit(torso_axis)
     if up is None:
         return None
 
-    shoulder_axis = _subtract(right_shoulder, left_shoulder)
-    right_hint = _unit(shoulder_axis)
-    if right_hint is None or _length(shoulder_axis) < 0.045:
-        right_hint = _unit(_subtract(right_hip, left_hip))
-    if right_hint is None:
-        return None
+    def project_width(axis):
+        along_up = _dot(axis, up)
+        return tuple(axis[i] - along_up * up[i] for i in range(3))
 
-    # Gram-Schmidt: keep the width axis perpendicular to the torso axis.
-    projected_right = tuple(
-        right_hint[i] - _dot(right_hint, up) * up[i]
-        for i in range(3)
-    )
-    right = _unit(projected_right)
+    shoulder_width = project_width(_subtract(right_shoulder, left_shoulder))
+    if _length(shoulder_width) >= _MIN_TORSO_WIDTH:
+        right_hint = shoulder_width
+    else:
+        # A nearly vertical shoulder axis is a poor estimate of torso width.
+        # The pelvis provides a more stable left/right reference in that frame.
+        hip_width = project_width(_subtract(right_hip, left_hip))
+        if _length(hip_width) < _MIN_TORSO_WIDTH:
+            return None
+        right_hint = hip_width
+
+    right = _unit(right_hint)
     if right is None:
         return None
     forward = _unit(_cross(right, up))
@@ -105,7 +116,6 @@ def _torso_frame(pose: dict[str, Any]):
     if up is None:
         return None
     return right, up, forward
-
 
 def _relative_euler(reference_frame, current_frame) -> tuple[float, float, float]:
     """Return XYZ Euler angles for reference_frame.T * current_frame."""
@@ -132,11 +142,20 @@ def _local_coordinates(vector, frame):
 
 
 def _segment_rotation(start, end, frame) -> tuple[float, float]:
+    """Map one 3D bone direction to a coherent two-axis Mine-imator rotation.
+
+    ROT_X is the forward tilt and ROT_Z is the side tilt. They are derived as
+    a composed rotation, not as two independent angles against the vertical;
+    therefore a diagonal movement is represented by one consistent 3D vector.
+    """
     direction = _subtract(end, start)
-    local_right, local_up, local_forward = _local_coordinates(direction, frame)
-    down_component = -local_up
-    rot_x = degrees(atan2(local_forward, down_component))
-    rot_z = degrees(atan2(local_right, down_component))
+    local_direction = _unit(_local_coordinates(direction, frame))
+    if local_direction is None:
+        return 0.0, 0.0
+
+    local_right, local_up, local_forward = local_direction
+    rot_x = degrees(asin(max(-1.0, min(1.0, local_forward))))
+    rot_z = degrees(atan2(local_right, -local_up))
     return rot_x, rot_z
 
 
@@ -193,9 +212,9 @@ def calculate_pose_controls(
     if current_frame is not None:
         bend_x, bend_y, bend_z = _relative_euler(reference_frame, current_frame)
         controls["body"] = {
-            "BEND_ANGLE_X": max(-89.0, min(89.0, bend_x)),
-            "BEND_ANGLE_Y": max(-120.0, min(120.0, bend_y)),
-            "BEND_ANGLE_Z": max(-89.0, min(89.0, bend_z)),
+            "BEND_ANGLE_X": bend_x,
+            "BEND_ANGLE_Y": bend_y,
+            "BEND_ANGLE_Z": bend_z,
         }
 
         left_arm = _limb_controls(pose, 11, 13, 15, current_frame)
