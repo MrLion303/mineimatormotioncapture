@@ -30,36 +30,60 @@ jobs:
           cache: pip
 
       - name: Instalar dependencias
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-          pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
-          pip install openmim
-          mim install mmengine
-          mim install mmcv==2.1.0
-          pip install -r requirements-mmpose.txt
-          python -m pip check
+          python -m pip install -r requirements-dev.txt
+
+          # PyTorch 2.1 CPU y NumPy 1.x mantienen la ABI usada por MMCV.
+          python -m pip install "numpy==1.26.4"
+          python -m pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
+
+          # Instala OpenMMLab sin OpenMIM: OpenMIM añade dependencias recientes
+          # que pueden forzar NumPy 2.x y romper la compatibilidad de PyTorch 2.1.
+          python -m pip install "mmengine==0.10.7"
+          python -m pip install "mmcv==2.1.0" -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
+
+          # Dependencias de inferencia necesarias para RTMDet + RTMPose + MotionBERT.
+          # MMPose declara chumpy como dependencia heredada para otras funciones
+          # (SMPL/mesh); el pipeline human3d de keypoints no lo utiliza.
+          python -m pip install json-tricks munkres "xtcocotools==1.14.3" pycocotools scipy shapely terminaltables tqdm
+          python -m pip install --no-deps -r requirements-mmpose.txt
+
+          # Import smoke test: falla el workflow si falta un paquete o si la
+          # combinación de NumPy/PyTorch/MMCV no puede cargarse.
+          python -c "import numpy, torch, mmcv, mmengine, mmdet, mmpose, xtcocotools, pycocotools; from mmpose.apis import MMPoseInferencer; assert numpy.__version__.startswith('1.26.'), numpy.__version__; assert torch.__version__.startswith('2.1.'), torch.__version__; print('OpenMMLab listo:', numpy.__version__, torch.__version__, mmcv.__version__, mmengine.__version__, mmdet.__version__, mmpose.__version__)"
 
       - name: Ejecutar pruebas
-        run: python -m pytest -q
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q
 
       - name: Comprobar sintaxis
-        run: python -m compileall -q main.py mocap_app tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q main.py mocap_app tests
 
       - name: Crear aplicación para Windows
-        run: >
-          pyinstaller --noconfirm --clean --windowed
-          --name MineimatorMotionCapture
-          --collect-all cv2
-          --collect-all cv2_enumerate_cameras
-          --collect-all PySide6
-          --collect-all torch
-          --collect-all torchvision
-          --collect-all mmcv
-          --collect-all mmengine
-          --collect-all mmdet
-          --collect-all mmpose
-          main.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --noconfirm --clean --windowed \
+            --name MineimatorMotionCapture \
+            --collect-all cv2 \
+            --collect-all cv2_enumerate_cameras \
+            --collect-all PySide6 \
+            --collect-all torch \
+            --collect-all torchvision \
+            --collect-all mmcv \
+            --collect-all mmengine \
+            --collect-all mmdet \
+            --collect-all mmpose \
+            --collect-all xtcocotools \
+            main.py
 
       - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
