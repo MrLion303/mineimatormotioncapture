@@ -2,7 +2,13 @@ import json
 
 import pytest
 
-from mocap_app.miobject import MiobjectError, _select_keyframes, export_miobject
+from mocap_app.miobject import (
+    MiobjectError,
+    _select_keyframes,
+    _shape_motion_delta,
+    _smooth,
+    export_miobject,
+)
 from mocap_app.retarget import calculate_pose_controls
 
 
@@ -320,3 +326,73 @@ def test_export_rejects_empty_capture(tmp_path):
     make_template(template_path)
     with pytest.raises(MiobjectError):
         export_miobject(template_path, tmp_path / "out.miobject", [], fps=30)
+
+
+def _rotate_pose_y(pose, angle_degrees, indices):
+    import math
+
+    rotated = {
+        "world": [list(point) for point in pose["world"]],
+        "image": pose.get("image", []),
+    }
+    angle = math.radians(angle_degrees)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    for index in indices:
+        x, y, z, *extra = rotated["world"][index]
+        rotated["world"][index] = [
+            cosine * x + sine * z,
+            y,
+            -sine * x + cosine * z,
+            *extra,
+        ]
+    return rotated
+
+
+def test_torso_forward_bow_uses_3d_relative_rotation():
+    neutral = standing_pose()
+    bowed = standing_pose()
+    for index in (11, 12):
+        bowed["world"][index][2] -= 0.42
+
+    controls = calculate_pose_controls(bowed, reference_pose=neutral)
+    assert abs(controls["body"]["BEND_ANGLE_X"]) > 8.0
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
+
+
+def test_torso_turn_uses_independent_yaw_without_fake_bow():
+    neutral = standing_pose()
+    rotated = _rotate_pose_y(neutral, 38.0, (11, 12, 23, 24))
+
+    controls = calculate_pose_controls(rotated, reference_pose=neutral)
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) > 25.0
+    assert abs(controls["body"]["BEND_ANGLE_X"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
+
+
+def test_arms_stay_local_when_the_torso_turns():
+    neutral = standing_pose()
+    rotated = _rotate_pose_y(
+        neutral, 42.0, (11, 12, 13, 14, 15, 16, 23, 24)
+    )
+
+    original = calculate_pose_controls(neutral, reference_pose=neutral)
+    controls = calculate_pose_controls(rotated, reference_pose=neutral)
+    for part in ("left_arm", "right_arm"):
+        for field in ("ROT_X", "ROT_Z", "BEND_ANGLE_X"):
+            assert abs(controls[part][field] - original[part][field]) < 1.5
+
+
+def test_leg_motion_response_reduces_small_tracking_overreaction():
+    assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == 0.0
+    assert 0.0 < _shape_motion_delta("left_leg", "ROT_Z", 20.0) < 20.0
+    assert 0.0 < _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) < 20.0
+    assert _shape_motion_delta("body", "BEND_ANGLE_X", 20.0) == 20.0
+
+
+def test_robust_smoothing_rejects_single_frame_spike_but_keeps_motion():
+    filtered = _smooth([0.0, 0.0, 35.0, 0.0, 0.0], True, fps=30)
+    assert max(abs(value) for value in filtered) < 1.0
+    gradual = _smooth([0.0, 2.0, 4.0, 6.0, 8.0], True, fps=30)
+    assert gradual[-1] > 2.0
