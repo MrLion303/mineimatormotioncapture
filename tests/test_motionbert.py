@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 
-from mocap_app.motionbert import map_h36m_keypoints_to_pose
+from mocap_app.motionbert import (
+    map_h36m_keypoints_to_pose,
+    resample_capture_timestamps,
+)
 
 
 def test_motionbert_h36m_joints_map_to_expected_body_landmarks():
@@ -54,3 +57,27 @@ def test_motionbert_mapping_builds_head_helper_landmarks():
 def test_motionbert_mapping_rejects_invalid_3d_output(keypoints):
     with pytest.raises(ValueError):
         map_h36m_keypoints_to_pose(keypoints)
+
+
+
+def test_capture_resampling_converts_60_fps_to_uniform_30_fps():
+    source_times = [index / 60.0 for index in range(5)]
+
+    source_indices, target_times = resample_capture_timestamps(source_times)
+
+    assert source_indices == [0, 2, 4]
+    assert target_times == pytest.approx([0.0, 1 / 30, 2 / 30])
+
+
+def test_capture_resampling_duplicates_frames_when_source_is_slower():
+    source_times = [0.0, 1 / 15, 2 / 15]
+
+    source_indices, target_times = resample_capture_timestamps(source_times)
+
+    assert source_indices == [0, 0, 1, 1, 2]
+    assert target_times == pytest.approx([index / 30 for index in range(5)])
+
+
+def test_capture_resampling_rejects_non_monotonic_timestamps():
+    with pytest.raises(ValueError, match="crecientes"):
+        resample_capture_timestamps([0.0, 0.1, 0.05])
