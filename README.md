@@ -41,7 +41,7 @@ pip install numpy==1.26.4
 pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
 pip install mmengine==0.10.7
 pip install mmcv==2.1.0 -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
-pip install json-tricks munkres xtcocotools==1.14.3 pycocotools scipy shapely terminaltables tqdm
+pip install six json-tricks munkres xtcocotools==1.14.3 pycocotools scipy shapely terminaltables tqdm
 pip install --no-deps -r requirements-mmpose.txt
 python -c "import torch, mmcv, mmengine, mmdet, mmpose; from mmpose.apis import MMPoseInferencer; print('OpenMMLab listo')"
 ```
