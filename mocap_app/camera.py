@@ -179,6 +179,19 @@ class CameraWorker(QThread):
             self._latest_preview = (self._preview_sequence, image)
 
     @staticmethod
+    def _enqueue_latest(target_queue: queue.Queue, item: tuple) -> None:
+        """Keep only the newest pending frame outside a recording."""
+        while True:
+            try:
+                target_queue.get_nowait()
+            except queue.Empty:
+                break
+        try:
+            target_queue.put_nowait(item)
+        except queue.Full:
+            pass
+
+    @staticmethod
     def _enqueue_recording(target_queue: queue.Queue, item: tuple) -> None:
         """Keep a bounded chronological buffer while preserving recent motion."""
         try:
