@@ -332,9 +332,6 @@ class CameraWorker(QThread):
             self._motionbert_processor = process_motionbert_video
             self._inference_ready.set()
 
-            processed_frames = 0
-            stats_started_at = time.monotonic()
-
             while self._running:
                 with self._capture_mode_lock:
                     self._inference_busy = True
@@ -377,16 +374,7 @@ class CameraWorker(QThread):
                         self._motion_frames.append((frame, captured_at))
                     self._inference_busy = False
 
-                if is_capture_frame:
-                    processed_frames += 1
-
                 self._notify_capture_drained()
-                now = time.monotonic()
-                interval = now - stats_started_at
-                if interval >= 1.0:
-                    self.pose_fps.emit(processed_frames / interval)
-                    processed_frames = 0
-                    stats_started_at = now
 
         except Exception as exc:
             self._inference_error = str(exc)
@@ -455,12 +443,16 @@ class CameraWorker(QThread):
                 "Procesando la grabación con RTMPose-M, RTMDet-M y MotionBERT. "
                 "La reconstrucción puede tardar más que la grabación."
             )
+            processing_started = time.monotonic()
             count = self._motionbert_processor(
                 video_path,
                 timestamps,
                 lambda pose, captured_at: self.pose_ready.emit(pose, captured_at),
                 self.status.emit,
             )
+            processing_seconds = max(0.001, time.monotonic() - processing_started)
+            if count:
+                self.pose_fps.emit(count / processing_seconds)
 
         if count == 0:
             raise RuntimeError(
