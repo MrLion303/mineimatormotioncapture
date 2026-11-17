@@ -79,7 +79,7 @@ La primera reconstrucción descarga los pesos oficiales de MMPose y puede tardar
 
 Dependencias experimentales:
 ```powershell
-pip install torch==2.4.1+cpu torchvision==0.19.1+cpu --index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
 pip install openmim
 mim install mmengine
 mim install mmcv==2.1.0
