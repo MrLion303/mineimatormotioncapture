@@ -15,6 +15,9 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
 
+BEST_MODEL_VARIANT = "heavy"
+DEFAULT_PREVIEW_FPS = 30
+
 MODEL_VARIANTS = {
     "heavy": {
         "label": "Heavy",
@@ -125,8 +128,8 @@ POSE_CONNECTIONS = (
 )
 
 
-def default_model_path(variant: str = "full") -> Path:
-    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS["full"])
+def default_model_path(variant: str = BEST_MODEL_VARIANT) -> Path:
+    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS[BEST_MODEL_VARIANT])
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", Path.home()))
     else:
@@ -141,7 +144,7 @@ def default_model_path(variant: str = "full") -> Path:
 
 
 def _download_model(target: Path, variant: str, status_callback) -> None:
-    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS["full"])
+    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS[BEST_MODEL_VARIANT])
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".download")
     request = urllib.request.Request(
@@ -180,17 +183,17 @@ class CameraWorker(QThread):
     def __init__(
         self,
         camera_index: int,
-        model_variant: str = "full",
+        model_variant: str = BEST_MODEL_VARIANT,
         parent=None,
         camera_backend: int | None = None,
         camera_name: str | None = None,
-        preview_fps: int = 30,
+        preview_fps: int = DEFAULT_PREVIEW_FPS,
     ):
         super().__init__(parent)
         self.camera_index = camera_index
         self.camera_backend = camera_backend
         self.camera_name = camera_name or f"Cámara {camera_index}"
-        self.model_variant = model_variant if model_variant in MODEL_VARIANTS else "full"
+        self.model_variant = model_variant if model_variant in MODEL_VARIANTS else BEST_MODEL_VARIANT
         self._preview_fps = max(10, min(60, int(preview_fps)))
         self._preview_interval = 1.0 / self._preview_fps
         self._running = True
@@ -328,9 +331,9 @@ class CameraWorker(QThread):
                 base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
                 running_mode=vision.RunningMode.VIDEO,
                 num_poses=1,
-                min_pose_detection_confidence=0.45,
-                min_pose_presence_confidence=0.45,
-                min_tracking_confidence=0.45,
+                min_pose_detection_confidence=0.55,
+                min_pose_presence_confidence=0.55,
+                min_tracking_confidence=0.60,
                 output_segmentation_masks=False,
             )
             landmarker = vision.PoseLandmarker.create_from_options(options)
