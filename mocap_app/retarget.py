@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from math import acos, atan2, degrees, sqrt
+from math import acos, asin, atan2, degrees, sqrt
 from typing import Any
 
 
-MIN_VISIBILITY = 0.20
+MIN_VISIBILITY = 0.35
+_EPSILON = 1e-6
+
+# MediaPipe world coordinates: screen-right, vertical-up is negative Y,
+# and the default front-facing depth axis points toward negative Z.
+WORLD_REFERENCE_FRAME = (
+    (1.0, 0.0, 0.0),
+    (0.0, -1.0, 0.0),
+    (0.0, 0.0, -1.0),
+)
 
 
 def _point(pose: dict[str, Any], index: int):
@@ -15,46 +24,141 @@ def _point(pose: dict[str, Any], index: int):
     if len(value) < 3:
         return None
     visibility = float(value[3]) if len(value) > 3 else 1.0
-    if visibility < MIN_VISIBILITY:
+    presence = float(value[4]) if len(value) > 4 else visibility
+    if min(visibility, presence) < MIN_VISIBILITY:
         return None
     return (float(value[0]), float(value[1]), float(value[2]))
 
 
 def _midpoint(a, b):
-    return tuple((a[i] + b[i]) / 2.0 for i in range(3))
+    return tuple((a[i] + b[i]) * 0.5 for i in range(3))
 
 
 def _subtract(a, b):
     return tuple(a[i] - b[i] for i in range(3))
 
 
-def _segment_rotation(start, end, down_sign: float) -> tuple[float, float]:
+def _dot(a, b) -> float:
+    return sum(a[i] * b[i] for i in range(3))
+
+
+def _cross(a, b):
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def _length(vector) -> float:
+    return sqrt(_dot(vector, vector))
+
+
+def _unit(vector):
+    magnitude = _length(vector)
+    if magnitude < _EPSILON:
+        return None
+    return tuple(component / magnitude for component in vector)
+
+
+def _torso_frame(pose: dict[str, Any]):
+    """Build an orthonormal torso frame from shoulder and hip landmarks.
+
+    The shoulder axis defines torso-facing direction. Hip width is used only
+    as a fallback because blending it into the shoulder axis underestimates
+    intentional torso twists relative to the pelvis.
+    """
+    left_shoulder = _point(pose, 11)
+    right_shoulder = _point(pose, 12)
+    left_hip = _point(pose, 23)
+    right_hip = _point(pose, 24)
+    if any(point is None for point in (
+        left_shoulder, right_shoulder, left_hip, right_hip
+    )):
+        return None
+
+    shoulder_mid = _midpoint(left_shoulder, right_shoulder)
+    hip_mid = _midpoint(left_hip, right_hip)
+    up = _unit(_subtract(shoulder_mid, hip_mid))
+    if up is None:
+        return None
+
+    shoulder_axis = _subtract(right_shoulder, left_shoulder)
+    right_hint = _unit(shoulder_axis)
+    if right_hint is None or _length(shoulder_axis) < 0.045:
+        right_hint = _unit(_subtract(right_hip, left_hip))
+    if right_hint is None:
+        return None
+
+    # Gram-Schmidt: keep the width axis perpendicular to the torso axis.
+    projected_right = tuple(
+        right_hint[i] - _dot(right_hint, up) * up[i]
+        for i in range(3)
+    )
+    right = _unit(projected_right)
+    if right is None:
+        return None
+    forward = _unit(_cross(right, up))
+    if forward is None:
+        return None
+    up = _unit(_cross(forward, right))
+    if up is None:
+        return None
+    return right, up, forward
+
+
+def _relative_euler(reference_frame, current_frame) -> tuple[float, float, float]:
+    """Return XYZ Euler angles for reference_frame.T * current_frame."""
+    matrix = [
+        [_dot(reference_frame[row], current_frame[column]) for column in range(3)]
+        for row in range(3)
+    ]
+    sin_y = max(-1.0, min(1.0, -matrix[2][0]))
+    angle_y = asin(sin_y)
+    cos_y = sqrt(max(0.0, 1.0 - sin_y * sin_y))
+    if cos_y > 1e-5:
+        angle_x = atan2(matrix[2][1], matrix[2][2])
+        angle_z = atan2(matrix[1][0], matrix[0][0])
+    else:
+        # Stable fallback near the Euler gimbal singularity.
+        angle_x = atan2(-matrix[1][2], matrix[1][1])
+        angle_z = 0.0
+    return degrees(angle_x), degrees(angle_y), degrees(angle_z)
+
+
+def _local_coordinates(vector, frame):
+    right, up, forward = frame
+    return _dot(vector, right), _dot(vector, up), _dot(vector, forward)
+
+
+def _segment_rotation(start, end, frame) -> tuple[float, float]:
     direction = _subtract(end, start)
-    vertical = direction[1] * down_sign
-    rot_x = degrees(atan2(direction[2], vertical))
-    rot_z = degrees(atan2(direction[0], vertical))
+    local_right, local_up, local_forward = _local_coordinates(direction, frame)
+    down_component = -local_up
+    rot_x = degrees(atan2(local_forward, down_component))
+    rot_z = degrees(atan2(local_right, down_component))
     return rot_x, rot_z
 
 
 def _bend_angle(start, joint, end) -> float:
     first = _subtract(start, joint)
     second = _subtract(end, joint)
-    length_a = sqrt(sum(component * component for component in first))
-    length_b = sqrt(sum(component * component for component in second))
-    if length_a < 1e-6 or length_b < 1e-6:
+    length_a = _length(first)
+    length_b = _length(second)
+    if length_a < _EPSILON or length_b < _EPSILON:
         return 0.0
-    dot = sum(first[i] * second[i] for i in range(3)) / (length_a * length_b)
+    dot = _dot(first, second) / (length_a * length_b)
     inner_angle = degrees(acos(max(-1.0, min(1.0, dot))))
     return max(0.0, min(150.0, 180.0 - inner_angle))
 
 
-def _limb_controls(pose, start_index, joint_index, end_index, down_sign):
+def _limb_controls(pose, start_index, joint_index, end_index, frame):
     start = _point(pose, start_index)
     joint = _point(pose, joint_index)
     end = _point(pose, end_index)
-    if start is None or joint is None or end is None:
+    if start is None or joint is None or end is None or frame is None:
         return None
-    rot_x, rot_z = _segment_rotation(start, joint, down_sign)
+    rot_x, rot_z = _segment_rotation(start, joint, frame)
     return {
         "ROT_X": rot_x,
         "ROT_Y": 0.0,
@@ -63,80 +167,63 @@ def _limb_controls(pose, start_index, joint_index, end_index, down_sign):
     }
 
 
-def calculate_pose_controls(pose: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """Map MediaPipe world landmarks to Mine-imator's native human channels.
+def calculate_pose_controls(
+    pose: dict[str, Any],
+    reference_pose: dict[str, Any] | None = None,
+) -> dict[str, dict[str, float]]:
+    """Convert MediaPipe landmarks to native Mine-imator human channels.
 
-    The values are absolute measurements in the camera coordinate frame. The
-    exporter calibrates each part against its first valid sample before writing
-    keyframes, so a neutral starting stance becomes the character's rest pose.
+    Torso orientation is calculated as a complete 3D frame and compared with
+    the first reliable frame. Arms are expressed in the *current* torso frame,
+    so a torso turn does not get added a second time to the arms. Legs use the
+    fixed reference frame because their Mine-imator parent is the character
+    root, which this application intentionally keeps stationary.
     """
-    left_knee = _point(pose, 25)
-    left_ankle = _point(pose, 27)
-    right_knee = _point(pose, 26)
-    right_ankle = _point(pose, 28)
-
-    vertical_directions = []
-    if left_knee is not None and left_ankle is not None:
-        vertical_directions.append(left_ankle[1] - left_knee[1])
-    if right_knee is not None and right_ankle is not None:
-        vertical_directions.append(right_ankle[1] - right_knee[1])
-    down_sign = 1.0 if not vertical_directions or sum(vertical_directions) >= 0 else -1.0
+    current_frame = _torso_frame(pose)
+    reference_frame = (
+        _torso_frame(reference_pose)
+        if reference_pose is not None
+        else WORLD_REFERENCE_FRAME
+    )
+    if reference_frame is None:
+        reference_frame = current_frame or WORLD_REFERENCE_FRAME
 
     controls: dict[str, dict[str, float]] = {}
 
-    left_shoulder = _point(pose, 11)
-    right_shoulder = _point(pose, 12)
-    left_hip = _point(pose, 23)
-    right_hip = _point(pose, 24)
-
-    if all(point is not None for point in (
-        left_shoulder, right_shoulder, left_hip, right_hip
-    )):
-        shoulder_mid = _midpoint(left_shoulder, right_shoulder)
-        hip_mid = _midpoint(left_hip, right_hip)
-        shoulder_axis = _subtract(right_shoulder, left_shoulder)
-        torso_axis = _subtract(shoulder_mid, hip_mid)
-
-        # Mine-imator's human torso is animated with the three native bend
-        # channels. Feeding this orientation into ROT_X/Y/Z makes a standing
-        # user export values close to 180 degrees and twists the whole torso.
-        torso_vertical = -torso_axis[1] * down_sign
+    if current_frame is not None:
+        bend_x, bend_y, bend_z = _relative_euler(reference_frame, current_frame)
         controls["body"] = {
-            "BEND_ANGLE_X": degrees(atan2(torso_axis[2], torso_vertical)),
-            "BEND_ANGLE_Y": degrees(atan2(-shoulder_axis[2], shoulder_axis[0])),
-            "BEND_ANGLE_Z": degrees(atan2(torso_axis[0], torso_vertical)),
+            "BEND_ANGLE_X": max(-89.0, min(89.0, bend_x)),
+            "BEND_ANGLE_Y": max(-120.0, min(120.0, bend_y)),
+            "BEND_ANGLE_Z": max(-89.0, min(89.0, bend_z)),
         }
 
-    left_arm = _limb_controls(pose, 11, 13, 15, down_sign)
-    right_arm = _limb_controls(pose, 12, 14, 16, down_sign)
-    left_leg = _limb_controls(pose, 23, 25, 27, down_sign)
-    right_leg = _limb_controls(pose, 24, 26, 28, down_sign)
+        left_arm = _limb_controls(pose, 11, 13, 15, current_frame)
+        right_arm = _limb_controls(pose, 12, 14, 16, current_frame)
+        if left_arm is not None:
+            controls["left_arm"] = left_arm
+        if right_arm is not None:
+            controls["right_arm"] = right_arm
 
-    if left_arm is not None:
-        controls["left_arm"] = left_arm
-    if right_arm is not None:
-        controls["right_arm"] = right_arm
+        nose = _point(pose, 0)
+        left_ear = _point(pose, 7)
+        right_ear = _point(pose, 8)
+        if nose is not None and left_ear is not None and right_ear is not None:
+            ear_mid = _midpoint(left_ear, right_ear)
+            ear_axis = _subtract(right_ear, left_ear)
+            face_direction = _subtract(nose, ear_mid)
+            face_local = _local_coordinates(face_direction, current_frame)
+            ear_local = _local_coordinates(ear_axis, current_frame)
+            controls["head"] = {
+                "ROT_X": degrees(atan2(face_local[1], max(abs(face_local[2]), 1e-5))),
+                "ROT_Z": degrees(atan2(ear_local[1], max(abs(ear_local[0]), 1e-5))),
+            }
+
+    left_leg = _limb_controls(pose, 23, 25, 27, reference_frame)
+    right_leg = _limb_controls(pose, 24, 26, 28, reference_frame)
     if left_leg is not None:
         controls["left_leg"] = left_leg
     if right_leg is not None:
         controls["right_leg"] = right_leg
-
-    nose = _point(pose, 0)
-    left_ear = _point(pose, 7)
-    right_ear = _point(pose, 8)
-    if nose is not None and left_ear is not None and right_ear is not None:
-        ear_mid = _midpoint(left_ear, right_ear)
-        ear_axis = _subtract(right_ear, left_ear)
-        head_direction = _subtract(nose, ear_mid)
-        # The reference human animates the head on X and Z. A separate Y
-        # rotation is not available in that demonstrated head rig.
-        controls["head"] = {
-            "ROT_X": degrees(
-                atan2(head_direction[1] * down_sign, max(abs(head_direction[2]), 1e-5))
-            ),
-            "ROT_Z": degrees(
-                atan2(ear_axis[1] * down_sign, max(abs(ear_axis[0]), 1e-5))
-            ),
-        }
 
     return controls
