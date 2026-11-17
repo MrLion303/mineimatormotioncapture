@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/rtmpose-motionbert
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+          pip install torch==2.4.1+cpu torchvision==0.19.1+cpu --index-url https://download.pytorch.org/whl/cpu
+          pip install openmim
+          mim install mmengine
+          mim install mmcv==2.1.0
+          pip install -r requirements-mmpose.txt
+          python -m pip check
 
       - name: Ejecutar pruebas
         run: python -m pytest -q
@@ -38,16 +45,21 @@ jobs:
         run: >
           pyinstaller --noconfirm --clean --windowed
           --name MineimatorMotionCapture
-          --collect-all mediapipe
           --collect-all cv2
           --collect-all cv2_enumerate_cameras
           --collect-all PySide6
+          --collect-all torch
+          --collect-all torchvision
+          --collect-all mmcv
+          --collect-all mmengine
+          --collect-all mmdet
+          --collect-all mmpose
           main.py
 
       - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
         with:
-          name: MineimatorMotionCapture-Windows
+          name: MineimatorMotionCapture-RTMPose-MotionBERT-Windows
           path: dist/MineimatorMotionCapture/
           if-no-files-found: error
           retention-days: 14
