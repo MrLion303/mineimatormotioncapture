@@ -98,15 +98,17 @@ def process_motionbert_video(
 
     status_callback("Reconstruyendo el movimiento 3D con MotionBERT...")
     count = 0
+    frame_index = 0
     for result in inferencer(str(video_path)):
+        timestamp_index = min(frame_index, len(captured_times) - 1)
+        frame_index += 1
         keypoints = _prediction_keypoints(result)
         if keypoints is None:
             continue
         pose = map_h36m_keypoints_to_pose(keypoints)
-        timestamp_index = min(count, len(captured_times) - 1)
         pose_callback(pose, captured_times[timestamp_index])
         count += 1
-        if count % 30 == 0:
-            status_callback(f"MotionBERT: {count} fotogramas reconstruidos...")
+        if frame_index % 30 == 0:
+            status_callback(f"MotionBERT: {frame_index} fotogramas analizados...")
 
     return count
