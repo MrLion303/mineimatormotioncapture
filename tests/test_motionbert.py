@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from mocap_app.motionbert import (
+    _motionbert_inferencer_kwargs,
     map_h36m_keypoints_to_pose,
+    process_motionbert_video,
     resample_capture_timestamps,
 )
 
@@ -109,3 +111,99 @@ def test_motionbert_mapping_rejects_invalid_confidence(scores):
     joints = np.zeros((17, 3), dtype=np.float32)
     with pytest.raises(ValueError, match="puntuaciones"):
         map_h36m_keypoints_to_pose(joints, scores)
+
+def test_windows_inferencer_uses_the_supported_faster_rcnn_detector():
+    kwargs = _motionbert_inferencer_kwargs("Windows")
+
+    assert kwargs["pose3d"] == "human3d"
+    assert kwargs["device"] == "cpu"
+    assert kwargs["det_cat_ids"] == 0
+    assert kwargs["det_model"].endswith("faster_rcnn_r50_fpn_coco.py")
+    assert __import__("pathlib").Path(kwargs["det_model"]).is_file()
+    assert kwargs["det_weights"].endswith(
+        "faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
+    )
+
+
+def test_non_windows_inferencer_keeps_the_human3d_default_detector():
+    kwargs = _motionbert_inferencer_kwargs("Linux")
+
+    assert kwargs == {"pose3d": "human3d", "device": "cpu"}
+
+
+def test_motionbert_video_reuses_inferencer_without_leaking_sequence_state():
+    from types import SimpleNamespace
+
+    joints = np.zeros((17, 3), dtype=np.float32)
+    joints[10] = (0.0, 0.0, 1.0)
+    joints[11] = (0.5, 0.0, 0.8)
+    joints[14] = (-0.5, 0.0, 0.8)
+    scores = np.ones(17, dtype=np.float32)
+
+    class FakeInferencer:
+        def __init__(self):
+            self.inferencer = SimpleNamespace(
+                _buffer={"previous_recording": [object()]},
+                _video_input=True,
+            )
+
+        def __call__(self, video_path):
+            assert video_path.endswith("capture.avi")
+            assert self.inferencer._buffer == {}
+            assert not self.inferencer._video_input
+            self.inferencer._buffer["current_recording"] = [object()]
+            yield {
+                "predictions": [[{
+                    "keypoints": joints,
+                    "keypoint_scores": scores,
+                }]]
+            }
+
+    fake = FakeInferencer()
+    emitted = []
+    count = process_motionbert_video(
+        "capture.avi",
+        [12.5],
+        lambda pose, timestamp: emitted.append((pose, timestamp)),
+        lambda _message: None,
+        inferencer=fake,
+    )
+
+    assert count == 1
+    assert len(emitted) == 1
+    assert emitted[0][1] == 12.5
+    assert len(emitted[0][0]["world"]) == 33
+    assert fake.inferencer._buffer == {}
+    assert not fake.inferencer._video_input
+
+
+def test_motionbert_video_rejects_non_increasing_timestamps_before_inference():
+    class ShouldNotRun:
+        def __call__(self, _video_path):
+            raise AssertionError("The inferencer must not be called.")
+
+    with pytest.raises(ValueError, match="crecientes"):
+        process_motionbert_video(
+            "capture.avi",
+            [1.0, 1.0],
+            lambda _pose, _timestamp: None,
+            lambda _message: None,
+            inferencer=ShouldNotRun(),
+        )
+
+
+def test_motionbert_video_rejects_more_results_than_timestamped_frames():
+    class TooManyFrames:
+        def __call__(self, _video_path):
+            yield {"predictions": []}
+            yield {"predictions": []}
+
+    with pytest.raises(RuntimeError, match="más fotogramas"):
+        process_motionbert_video(
+            "capture.avi",
+            [1.0],
+            lambda _pose, _timestamp: None,
+            lambda _message: None,
+            inferencer=TooManyFrames(),
+        )
+
