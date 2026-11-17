@@ -67,7 +67,7 @@ def resample_capture_timestamps(
     return source_indices, target_times
 
 
-def map_h36m_keypoints_to_pose(keypoints) -> dict:
+def map_h36m_keypoints_to_pose(keypoints, keypoint_scores=None) -> dict:
     """Convert MMPose Human3.6M 3D joints to the landmark IDs used by retarget.py."""
     points = np.asarray(keypoints, dtype=np.float32)
     points = np.squeeze(points)
@@ -77,6 +77,14 @@ def map_h36m_keypoints_to_pose(keypoints) -> dict:
         )
     if not np.isfinite(points).all():
         raise ValueError("MotionBERT devolvió coordenadas 3D no finitas.")
+
+    if keypoint_scores is None:
+        scores = np.ones(17, dtype=np.float32)
+    else:
+        scores = np.asarray(keypoint_scores, dtype=np.float32).squeeze()
+        if scores.shape != (17,) or not np.isfinite(scores).all():
+            raise ValueError("MotionBERT devolvió puntuaciones de articulación inválidas.")
+        scores = np.clip(scores, 0.0, 1.0)
 
     # Pose3DInferencer reorders Human3.6M coordinates to [camera X, height,
     # depth] and negates X and depth. Convert that documented output back to
@@ -88,7 +96,8 @@ def map_h36m_keypoints_to_pose(keypoints) -> dict:
     world = [[0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(33)]
     for source_index, target_index in H36M_TO_LANDMARKS.items():
         x, y, z = camera_points[source_index]
-        world[target_index] = [float(x), float(y), float(z), 1.0, 1.0]
+        confidence = float(scores[source_index])
+        world[target_index] = [float(x), float(y), float(z), confidence, confidence]
 
     neck = camera_points[9]
     head = camera_points[10]
@@ -101,25 +110,25 @@ def map_h36m_keypoints_to_pose(keypoints) -> dict:
     # head axis from the shoulders. These are helper landmarks, not detections.
     nose = head + (head - neck) * 0.30
     ear_offset = shoulder_axis * 0.12
-    world[0] = [float(v) for v in nose] + [1.0, 1.0]
-    world[7] = [float(v) for v in (head - ear_offset)] + [1.0, 1.0]
-    world[8] = [float(v) for v in (head + ear_offset)] + [1.0, 1.0]
+    face_confidence = float(min(scores[9], scores[10]))
+    ear_confidence = float(min(scores[10], scores[11], scores[14]))
+    world[0] = [float(v) for v in nose] + [face_confidence, face_confidence]
+    world[7] = [float(v) for v in (head - ear_offset)] + [ear_confidence, ear_confidence]
+    world[8] = [float(v) for v in (head + ear_offset)] + [ear_confidence, ear_confidence]
 
     return {"world": world, "image": []}
 
 
-def _prediction_keypoints(result: dict):
+def _prediction_instance(result: dict):
     batches = result.get("predictions") or []
     if not batches:
         return None
     first_batch = batches[0]
     if isinstance(first_batch, dict):
-        instance = first_batch
-    elif isinstance(first_batch, list) and first_batch:
-        instance = first_batch[0]
-    else:
-        return None
-    return instance.get("keypoints")
+        return first_batch
+    if isinstance(first_batch, list) and first_batch:
+        return first_batch[0]
+    return None
 
 
 def process_motionbert_video(
@@ -144,10 +153,13 @@ def process_motionbert_video(
     for result in inferencer(str(video_path)):
         timestamp_index = min(frame_index, len(captured_times) - 1)
         frame_index += 1
-        keypoints = _prediction_keypoints(result)
-        if keypoints is None:
+        instance = _prediction_instance(result)
+        if instance is None or instance.get("keypoints") is None:
             continue
-        pose = map_h36m_keypoints_to_pose(keypoints)
+        pose = map_h36m_keypoints_to_pose(
+            instance["keypoints"],
+            instance.get("keypoint_scores"),
+        )
         pose_callback(pose, captured_times[timestamp_index])
         count += 1
         if frame_index % 30 == 0:
