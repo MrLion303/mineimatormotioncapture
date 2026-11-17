@@ -9,7 +9,7 @@ _EPSILON = 1e-6
 _MIN_TORSO_HEIGHT = 0.12
 _MIN_TORSO_WIDTH = 0.045
 
-# MediaPipe world coordinates: screen-right, vertical-up is negative Y,
+# The mapped 3D landmark convention is screen-right, vertical-up is negative Y,
 # and the default front-facing depth axis points toward negative Z.
 WORLD_REFERENCE_FRAME = (
     (1.0, 0.0, 0.0),
