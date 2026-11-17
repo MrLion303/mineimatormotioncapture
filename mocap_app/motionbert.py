@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from math import floor, isfinite
 from pathlib import Path
+import platform
 from typing import Callable, Iterable
 
 import numpy as np
@@ -28,6 +29,71 @@ H36M_TO_LANDMARKS = {
 }
 
 DEFAULT_VIDEO_FPS = 30.0
+
+WINDOWS_DETECTOR_WEIGHTS = (
+    "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/"
+    "faster_rcnn_r50_fpn_1x_coco/"
+    "faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
+)
+
+
+def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
+    """Build a known-compatible MMPose configuration for the current OS."""
+    system = platform_name or platform.system()
+    kwargs = {"pose3d": "human3d", "device": "cpu"}
+
+    # MMPose 1.3.2's own Windows inferencer test replaces the default RTMDet
+    # detector with Faster R-CNN because the RTMDet alias is not reliable there.
+    if system.lower().startswith("win"):
+        detector_config = (
+            Path(__file__).resolve().parent
+            / "assets"
+            / "faster_rcnn_r50_fpn_coco.py"
+        )
+        if not detector_config.is_file():
+            raise RuntimeError(
+                "Falta la configuración Faster R-CNN necesaria para Windows: "
+                f"{detector_config}"
+            )
+        kwargs.update(
+            det_model=str(detector_config),
+            det_weights=WINDOWS_DETECTOR_WEIGHTS,
+            det_cat_ids=0,
+        )
+    return kwargs
+
+
+def create_motionbert_inferencer():
+    """Load the complete 2D + 3D inference stack before recording is enabled."""
+    try:
+        from mmpose.apis import MMPoseInferencer
+    except Exception as exc:
+        raise RuntimeError(
+            "No se pudo importar MMPose. Comprueba las dependencias de "
+            "RTMPose, RTMDet y MotionBERT."
+        ) from exc
+
+    try:
+        return MMPoseInferencer(**_motionbert_inferencer_kwargs())
+    except Exception as exc:
+        raise RuntimeError(
+            "No se pudieron inicializar los modelos RTMPose/MotionBERT. "
+            "Comprueba la conexión a Internet para descargar los pesos "
+            "la primera vez y revisa la instalación de OpenMMLab."
+        ) from exc
+
+
+def _reset_inferencer_session(inferencer) -> None:
+    """Remove temporal tracking/sequence state between independent recordings."""
+    backend = getattr(inferencer, "inferencer", None) or inferencer
+    buffer = getattr(backend, "_buffer", None)
+    if hasattr(buffer, "clear"):
+        buffer.clear()
+    if hasattr(backend, "_video_input"):
+        backend._video_input = False
+    if hasattr(inferencer, "_video_input"):
+        inferencer._video_input = False
+
 
 
 def resample_capture_timestamps(
@@ -122,14 +188,20 @@ def map_h36m_keypoints_to_pose(keypoints, keypoint_scores=None) -> dict:
 
 
 def _prediction_instance(result: dict):
-    batches = result.get("predictions") or []
-    if not batches:
+    if not isinstance(result, dict):
         return None
-    first_batch = batches[0]
-    if isinstance(first_batch, dict):
-        return first_batch
-    if isinstance(first_batch, list) and first_batch:
-        return first_batch[0]
+    batches = result.get("predictions") or []
+    if not isinstance(batches, (list, tuple)):
+        return None
+
+    for batch in batches:
+        candidates = batch if isinstance(batch, (list, tuple)) else [batch]
+        for candidate in candidates:
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("keypoints") is not None
+            ):
+                return candidate
     return None
 
 
@@ -138,33 +210,56 @@ def process_motionbert_video(
     timestamps: Iterable[float],
     pose_callback: Callable[[dict, float], None],
     status_callback: Callable[[str], None],
+    inferencer=None,
 ) -> int:
-    """Run the official MMPose human3d pipeline over a complete captured clip."""
-    from mmpose.apis import MMPoseInferencer
-
-    captured_times = list(timestamps)
+    """Run MMPose human3d over a clip and align each result to its source time."""
+    captured_times = [float(value) for value in timestamps]
     if not captured_times:
         return 0
+    if any(not isfinite(value) for value in captured_times):
+        raise ValueError("La secuencia contiene marcas de tiempo no finitas.")
+    if any(
+        current <= previous
+        for previous, current in zip(captured_times, captured_times[1:])
+    ):
+        raise ValueError("Las marcas de tiempo de la captura deben ser crecientes.")
 
-    status_callback("Cargando RTMPose-M, RTMDet-M y MotionBERT...")
-    inferencer = MMPoseInferencer(pose3d="human3d", device="cpu")
+    pose_inferencer = inferencer or create_motionbert_inferencer()
+    _reset_inferencer_session(pose_inferencer)
 
     status_callback("Reconstruyendo el movimiento 3D con MotionBERT...")
     count = 0
     frame_index = 0
-    for result in inferencer(str(video_path)):
-        timestamp_index = min(frame_index, len(captured_times) - 1)
-        frame_index += 1
-        instance = _prediction_instance(result)
-        if instance is None or instance.get("keypoints") is None:
-            continue
-        pose = map_h36m_keypoints_to_pose(
-            instance["keypoints"],
-            instance.get("keypoint_scores"),
-        )
-        pose_callback(pose, captured_times[timestamp_index])
-        count += 1
-        if frame_index % 30 == 0:
-            status_callback(f"MotionBERT: {frame_index} fotogramas analizados...")
+    try:
+        for result in pose_inferencer(str(video_path)):
+            if frame_index >= len(captured_times):
+                raise RuntimeError(
+                    "MMPose devolvió más fotogramas que los registrados en la captura. "
+                    "Se detuvo para evitar desajustar la animación."
+                )
+            captured_at = captured_times[frame_index]
+            frame_index += 1
 
+            instance = _prediction_instance(result)
+            if instance is None:
+                continue
+            pose = map_h36m_keypoints_to_pose(
+                instance["keypoints"],
+                instance.get("keypoint_scores"),
+            )
+            pose_callback(pose, captured_at)
+            count += 1
+            if frame_index % 30 == 0:
+                status_callback(
+                    f"MotionBERT: {frame_index} fotogramas analizados..."
+                )
+    finally:
+        # MMPose 1.3.2's unified wrapper does not clear Pose3DInferencer's
+        # sequence buffer between calls, so explicitly isolate each recording.
+        _reset_inferencer_session(pose_inferencer)
+
+    if frame_index == 0:
+        raise RuntimeError(
+            "MMPose no pudo leer ningún fotograma del vídeo temporal."
+        )
     return count
