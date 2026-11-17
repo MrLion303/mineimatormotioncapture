@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         self.recorded_duration = 0.0
         self.record_end = 0.0
         self.samples: list[tuple[float, dict]] = []
+        self._capture_error: str | None = None
 
         self.countdown_timer = QTimer(self)
         self.countdown_timer.setInterval(1000)
@@ -799,10 +800,17 @@ class MainWindow(QMainWindow):
         self._update_actions()
 
     def _camera_error(self, message: str) -> None:
-        self._set_status(f"Error de cámara: {message}")
-        QMessageBox.critical(self, "No se pudo iniciar la cámara", message)
-        if self.state == "finalizing":
-            self._complete_recording()
+        self._set_status(message)
+        if self.state in ("recording", "finalizing"):
+            self._capture_error = message
+            # Do not allow a partially reconstructed take to be exported.
+            self.samples.clear()
+            return
+        QMessageBox.critical(
+            self,
+            "No se pudo iniciar la captura",
+            message,
+        )
 
     def _camera_finished(self, worker: CameraWorker) -> None:
         if self.camera_worker is not worker:
@@ -950,6 +958,7 @@ class MainWindow(QMainWindow):
         self._begin_recording()
 
     def _begin_recording(self) -> None:
+        self._capture_error = None
         self.state = "recording"
         self.record_start = time.monotonic()
         self.recorded_duration = self.record_limit
@@ -1029,10 +1038,21 @@ class MainWindow(QMainWindow):
         self.time_label.setText(f"{len(self.samples)} muestras")
         self._restore_controls()
 
-        if not self.samples:
+        capture_error = self._capture_error
+        self._capture_error = None
+        if capture_error:
+            self.samples.clear()
+            self.time_label.setText("Reconstrucción fallida")
+            self._set_status(capture_error)
+            QMessageBox.critical(
+                self,
+                "Falló la reconstrucción 3D",
+                capture_error,
+            )
+        elif not self.samples:
             self._set_status(
                 "No se detectó una pose durante la grabación. Ajusta el encuadre "
-                "e inténtalo de nuevo."
+                "y asegúrate de que el cuerpo completo sea visible."
             )
         else:
             self._set_status(
