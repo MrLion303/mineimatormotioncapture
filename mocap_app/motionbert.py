@@ -12,7 +12,7 @@ import numpy as np
 # 4 left hip, 5 left knee, 6 left foot, 7 spine, 8 thorax,
 # 9 neck, 10 head, 11 left shoulder, 12 left elbow,
 # 13 left wrist, 14 right shoulder, 15 right elbow, 16 right wrist.
-H36M_TO_MEDIAPIPE = {
+H36M_TO_LANDMARKS = {
     11: 11,  # left shoulder
     12: 13,  # left elbow
     13: 15,  # left wrist
@@ -86,7 +86,7 @@ def map_h36m_keypoints_to_pose(keypoints) -> dict:
     ).astype(np.float32, copy=False)
 
     world = [[0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(33)]
-    for source_index, target_index in H36M_TO_MEDIAPIPE.items():
+    for source_index, target_index in H36M_TO_LANDMARKS.items():
         x, y, z = camera_points[source_index]
         world[target_index] = [float(x), float(y), float(z), 1.0, 1.0]
 
