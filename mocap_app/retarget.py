@@ -190,7 +190,7 @@ def calculate_pose_controls(
     pose: dict[str, Any],
     reference_pose: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Convert MediaPipe landmarks to native Mine-imator human channels.
+    """Convert 3D body landmarks to native Mine-imator human channels.
 
     Torso orientation is calculated as a complete 3D frame and compared with
     the first reliable frame. Arms are expressed in the *current* torso frame,
