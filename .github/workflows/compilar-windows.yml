@@ -61,6 +61,12 @@ jobs:
           set -euo pipefail
           python -m pytest -q
 
+      - name: Comprobar inicialización real de RTMPose y MotionBERT
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "from mocap_app.motionbert import create_motionbert_inferencer; engine=create_motionbert_inferencer(); assert hasattr(engine, 'inferencer'); print('RTMDet + RTMPose + MotionBERT inicializados correctamente en Windows')"
+
       - name: Comprobar sintaxis
         shell: bash
         run: |
