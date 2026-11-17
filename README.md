@@ -2,10 +2,16 @@
 
 Aplicación de escritorio para grabar los movimientos de una persona con una webcam y convertirlos en keyframes de un personaje humano de Mine-imator.
 
-## Versión 0.2.11
+## Versión 0.2.12
 
-- El torso usa los tres canales nativos `BEND_ANGLE_X/Y/Z` de Mine-imator; la cabeza usa `ROT_X` y `ROT_Z`, siguiendo la estructura de la demostración de rig compartida.
+- Se fija el modelo MediaPipe Pose Landmarker Heavy, sin selector de calidad; se utilizan parámetros de confianza más estrictos.
+- La vista previa y la exportación usan 30 FPS recomendados, sin controles de FPS.
+- El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; sus rotaciones se miden respecto a la primera postura fiable para separar inclinación, giro y reverencia.
+- Los brazos se expresan en el marco local actual del torso, evitando duplicar el giro del torso en los brazos.
+- La cabeza usa `ROT_X` y `ROT_Z`, y el torso conserva los tres canales nativos `BEND_ANGLE_X/Y/Z`.
 - Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la flexión del codo y la rodilla se calcula por separado.
+- Se reduce la respuesta de las piernas y se aplica una zona muerta pequeña para evitar que la vibración del tracking se convierta en pasos exagerados.
+- El suavizado combina mediana temporal y un filtro adaptativo tipo One Euro: amortigua saltos aislados y conserva movimientos rápidos.
 - Cada articulación se calibra con su primera muestra válida. La postura de inicio pasa a ser el reposo de la captura, evitando exportar offsets absolutos de cámara como giros cercanos a 180°.
 - La pista `char` se congela en su primer transform. No se generan desplazamientos ni rotaciones globales.
 - La plantilla conserva campos estáticos del rig, como `POS_Z` y `TEXTURE_OBJ`, además de accesorios.
@@ -33,15 +39,15 @@ python main.py
 ## Flujo de uso
 
 1. Conecta la webcam.
-2. Selecciona **Heavy** para probar el modelo más exigente, **Full** para equilibrar calidad y velocidad o **Lite** si el equipo necesita más rendimiento. Ajusta los FPS de vista previa según prefieras.
+2. La aplicación selecciona automáticamente el modelo **Heavy** y configura la vista previa a 30 FPS.
 3. Carga tu plantilla humana .miobject.
-4. Define la duración y los FPS de exportación.
+4. Define la duración. La exportación se genera automáticamente a 30 FPS.
 5. Colócate de cuerpo completo dentro del encuadre. Evita que hombros, codos, muñecas, caderas, rodillas y tobillos queden ocultos.
 6. Pulsa **Grabar**. Se mostrará 3, 2, 1 y después comenzará la captura.
 7. Al terminar, la aplicación procesa las muestras pendientes.
 8. Exporta un nuevo .miobject.
 
-El retargeting convierte los landmarks a los canales nativos del rig humano: flexiones XYZ para el torso, rotaciones X/Z para la cabeza y rotaciones más flexión para las extremidades. La primera muestra válida de cada articulación sirve como referencia neutra; por eso, al iniciar REC, mantén una postura natural y quieta durante un instante antes de comenzar el movimiento. La posición del personaje sigue siendo la de la plantilla y la pista `char` se reduce al primer transform.
+El retargeting construye una orientación 3D del torso a partir de los ejes de hombros y caderas. Usa la primera postura corporal completa como referencia; mantén una posición natural y quieta durante un instante al comenzar REC. Los brazos se calculan en relación con el torso actual, mientras que las piernas se mantienen relacionadas con la orientación inicial de la raíz. El exportador aplica una respuesta reducida a las piernas y un filtro adaptativo a las articulaciones. La posición del personaje sigue siendo la de la plantilla y la pista `char` se reduce al primer transform.
 
 ## Compilación de Windows
 
