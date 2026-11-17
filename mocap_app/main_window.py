@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         preview_heading.setSpacing(2)
         preview_title = QLabel("VISTA EN DIRECTO")
         preview_title.setObjectName("sectionTitle")
-        preview_subtitle = QLabel("Cámara en directo; la reconstrucción 3D se calcula después de REC.")
+        preview_subtitle = QLabel("Reconstrucción 3D después de REC")
         preview_subtitle.setObjectName("sectionHint")
         preview_heading.addWidget(preview_title)
         preview_heading.addWidget(preview_subtitle)
