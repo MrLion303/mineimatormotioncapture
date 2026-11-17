@@ -7,7 +7,7 @@ from mocap_app.motionbert import map_h36m_keypoints_to_pose
 def test_motionbert_h36m_joints_map_to_expected_body_landmarks():
     joints = np.zeros((17, 3), dtype=np.float32)
     for index in range(17):
-        joints[index] = (index * 0.1, index * -0.2, index * 0.3)
+        joints[index] = (index * -0.1, index * 0.3, index * 0.2)
 
     pose = map_h36m_keypoints_to_pose(joints)
     world = pose["world"]
@@ -31,9 +31,9 @@ def test_motionbert_h36m_joints_map_to_expected_body_landmarks():
 def test_motionbert_mapping_builds_head_helper_landmarks():
     joints = np.zeros((17, 3), dtype=np.float32)
     joints[9] = (0.0, 0.0, 0.0)
-    joints[10] = (0.0, -1.0, 0.0)
-    joints[11] = (-0.5, -0.8, 0.0)
-    joints[14] = (0.5, -0.8, 0.0)
+    joints[10] = (0.0, 0.0, 1.0)
+    joints[11] = (0.5, 0.0, 0.8)
+    joints[14] = (-0.5, 0.0, 0.8)
 
     pose = map_h36m_keypoints_to_pose(joints)
     world = pose["world"]
