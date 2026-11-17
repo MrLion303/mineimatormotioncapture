@@ -449,12 +449,12 @@ class CameraWorker(QThread):
                 now = time.monotonic()
                 interval = now - stats_started_at
                 if interval >= 1.0:
-                    # CAM reports the camera's actual delivered rate, not the
-                    # user-selected preview refresh limit.
+                    # CAM reports the camera's actual delivered rate.
                     self.preview_fps.emit(camera_frames / interval)
                     camera_frames = 0
                     stats_started_at = now
 
+                if captured_at - last_preview_published >= self._preview_interval:
                     mirrored = cv2.flip(frame, 1)
                     rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
                     height, width, _ = rgb_preview.shape
