@@ -26,7 +26,7 @@ Human3.6M no incluye nariz ni orejas como articulaciones independientes. Esos pu
 - Windows 10 u 11 de 64 bits.
 - Python 3.11 de 64 bits.
 - Webcam funcional.
-- Conexión a Internet durante la primera reconstrucción para descargar los pesos de los modelos.
+- Conexión a Internet durante la primera conexión de la cámara para descargar los pesos de los modelos.
 - Plantilla humana `.miobject` de Mine-imator con `body`, `head`, `left_arm`, `right_arm`, `left_leg` y `right_leg`.
 
 ## Instalar desde código
