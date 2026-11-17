@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import floor, isfinite
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -25,6 +26,45 @@ H36M_TO_MEDIAPIPE = {
     2: 26,   # right knee
     3: 28,   # right foot / ankle
 }
+
+DEFAULT_VIDEO_FPS = 30.0
+
+
+def resample_capture_timestamps(
+    captured_timestamps: Iterable[float],
+    fps: float = DEFAULT_VIDEO_FPS,
+) -> tuple[list[int], list[float]]:
+    """Select source frames on a uniform timeline for MotionBERT video input."""
+    source_times = [float(value) for value in captured_timestamps]
+    if not source_times:
+        raise ValueError("La captura no contiene marcas de tiempo.")
+    if not isfinite(fps) or fps <= 0:
+        raise ValueError("La frecuencia de reconstrucción debe ser mayor que cero.")
+    if any(not isfinite(value) for value in source_times):
+        raise ValueError("La captura contiene marcas de tiempo no finitas.")
+    if any(current <= previous for previous, current in zip(source_times, source_times[1:])):
+        raise ValueError("Las marcas de tiempo de la captura deben ser crecientes.")
+
+    interval = 1.0 / fps
+    duration = source_times[-1] - source_times[0]
+    sample_count = max(1, floor(duration * fps + 1e-9) + 1)
+    target_times = [
+        source_times[0] + index * interval
+        for index in range(sample_count)
+    ]
+
+    source_indices: list[int] = []
+    source_index = 0
+    for target_time in target_times:
+        while (
+            source_index + 1 < len(source_times)
+            and abs(source_times[source_index + 1] - target_time)
+            < abs(source_times[source_index] - target_time)
+        ):
+            source_index += 1
+        source_indices.append(source_index)
+
+    return source_indices, target_times
 
 
 def map_h36m_keypoints_to_pose(keypoints) -> dict:
