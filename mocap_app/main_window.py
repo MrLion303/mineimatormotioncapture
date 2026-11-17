@@ -1008,7 +1008,7 @@ class MainWindow(QMainWindow):
         self.overlay.show()
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Procesando...")
-        self._set_status("Procesando los últimos fotogramas de la captura...")
+        self._set_status("Preparando la reconstrucción 3D con MotionBERT...")
 
         worker = self.camera_worker
         if worker is None:
