@@ -10,10 +10,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: motionbert-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compilar:
     name: Pruebas y compilación
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
