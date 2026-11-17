@@ -38,10 +38,12 @@ def map_h36m_keypoints_to_pose(keypoints) -> dict:
     if not np.isfinite(points).all():
         raise ValueError("MotionBERT devolvió coordenadas 3D no finitas.")
 
-    # MMPose uses camera coordinates. Keep X right and Y down, and invert Z
-    # so the character's forward direction matches the retargeter's -Z axis.
-    camera_points = points.copy()
-    camera_points[:, 2] *= -1.0
+    # Pose3DInferencer reorders Human3.6M coordinates to [camera X, height,
+    # depth] and negates X and depth. Convert that documented output back to
+    # the retargeter's convention: X right, Y down, Z toward the camera (-Z).
+    camera_points = np.column_stack(
+        (-points[:, 0], -points[:, 2], -points[:, 1])
+    ).astype(np.float32, copy=False)
 
     world = [[0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(33)]
     for source_index, target_index in H36M_TO_MEDIAPIPE.items():
