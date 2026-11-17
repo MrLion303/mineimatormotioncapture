@@ -154,6 +154,11 @@ class CameraWorker(QThread):
             self._draining_capture = True
         self._notify_capture_drained()
 
+    def _is_recording_capture(self) -> bool:
+        """Return whether camera frames should be buffered for this recording."""
+        with self._capture_mode_lock:
+            return self._recording_capture and not self._draining_capture
+
     def _notify_capture_drained(self) -> None:
         should_emit = False
         with self._capture_mode_lock:
@@ -429,7 +434,7 @@ class CameraWorker(QThread):
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
-                if recording:
+                if self._is_recording_capture():
                     source_height, source_width = frame.shape[:2]
                     resize_factor = min(
                         1.0,
