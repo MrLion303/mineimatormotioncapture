@@ -81,3 +81,31 @@ def test_capture_resampling_duplicates_frames_when_source_is_slower():
 def test_capture_resampling_rejects_non_monotonic_timestamps():
     with pytest.raises(ValueError, match="crecientes"):
         resample_capture_timestamps([0.0, 0.1, 0.05])
+
+
+
+def test_motionbert_mapping_preserves_keypoint_confidence():
+    joints = np.zeros((17, 3), dtype=np.float32)
+    scores = np.ones(17, dtype=np.float32)
+    scores[11] = 0.2
+    scores[10] = 0.4
+
+    pose = map_h36m_keypoints_to_pose(joints, scores)
+    world = pose["world"]
+
+    assert world[11][3:] == pytest.approx([0.2, 0.2])
+    assert world[0][3:] == pytest.approx([0.4, 0.4])
+    assert world[7][3:] == pytest.approx([0.4, 0.4])
+
+
+@pytest.mark.parametrize(
+    "scores",
+    [
+        np.zeros(16, dtype=np.float32),
+        np.full(17, np.nan, dtype=np.float32),
+    ],
+)
+def test_motionbert_mapping_rejects_invalid_confidence(scores):
+    joints = np.zeros((17, 3), dtype=np.float32)
+    with pytest.raises(ValueError, match="puntuaciones"):
+        map_h36m_keypoints_to_pose(joints, scores)
