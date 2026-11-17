@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from mocap_app.motionbert import (
+    _coco_scores_to_h36m,
     _motionbert_inferencer_kwargs,
     map_h36m_keypoints_to_pose,
     process_motionbert_video,
@@ -206,4 +207,67 @@ def test_motionbert_video_rejects_more_results_than_timestamped_frames():
             lambda _message: None,
             inferencer=TooManyFrames(),
         )
+
+def test_rtmpose_coco_confidence_is_converted_to_h36m_order():
+    coco_scores = np.arange(17, dtype=np.float32) / 16.0
+
+    h36m_scores = _coco_scores_to_h36m(coco_scores)
+
+    assert h36m_scores.shape == (17,)
+    assert h36m_scores[0] == pytest.approx(min(coco_scores[11], coco_scores[12]))
+    assert h36m_scores[1:7] == pytest.approx(coco_scores[[12, 14, 16, 11, 13, 15]])
+    assert h36m_scores[8] == pytest.approx(min(coco_scores[5], coco_scores[6]))
+    assert h36m_scores[7] == pytest.approx(min(h36m_scores[0], h36m_scores[8]))
+    assert h36m_scores[9] == pytest.approx(coco_scores[0])
+    assert h36m_scores[10] == pytest.approx(min(coco_scores[1], coco_scores[2]))
+    assert h36m_scores[11:17] == pytest.approx(coco_scores[[5, 7, 9, 6, 8, 10]])
+
+
+def test_motionbert_prefers_real_rtmpose_scores_over_placeholder_3d_scores():
+    from types import SimpleNamespace
+
+    joints = np.zeros((17, 3), dtype=np.float32)
+    joints[10] = (0.0, 0.0, 1.0)
+    joints[11] = (0.5, 0.0, 0.8)
+    joints[14] = (-0.5, 0.0, 0.8)
+    coco_scores = np.arange(17, dtype=np.float32) / 16.0
+
+    class FakeInferencer:
+        def __init__(self):
+            self.inferencer = SimpleNamespace(
+                _buffer={"old": [object()]},
+                _video_input=True,
+                pose2d_model=SimpleNamespace(
+                    model=SimpleNamespace(dataset_meta={"dataset_name": "coco"})
+                ),
+            )
+
+        def __call__(self, _video_path):
+            self.inferencer._buffer["pose_est_results_list"] = [[
+                SimpleNamespace(
+                    pred_instances=SimpleNamespace(keypoint_scores=coco_scores)
+                )
+            ]]
+            yield {
+                "predictions": [[{
+                    "keypoints": joints,
+                    "keypoint_scores": np.ones(17, dtype=np.float32),
+                }]]
+            }
+
+    emitted = []
+    process_motionbert_video(
+        "capture.avi",
+        [7.0],
+        lambda pose, timestamp: emitted.append((pose, timestamp)),
+        lambda _message: None,
+        inferencer=FakeInferencer(),
+    )
+
+    world = emitted[0][0]["world"]
+    assert world[11][3] == pytest.approx(coco_scores[5])
+    assert world[13][3] == pytest.approx(coco_scores[7])
+    assert world[15][3] == pytest.approx(coco_scores[9])
+    assert world[23][3] == pytest.approx(coco_scores[11])
+    assert world[24][3] == pytest.approx(coco_scores[12])
 
