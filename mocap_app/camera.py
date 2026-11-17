@@ -5,7 +5,6 @@ import queue
 import sys
 import threading
 import time
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,35 +14,8 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
 
-BEST_MODEL_VARIANT = "heavy"
 DEFAULT_PREVIEW_FPS = 30
 
-MODEL_VARIANTS = {
-    "heavy": {
-        "label": "Heavy",
-        "url": (
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-            "pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
-        ),
-        "filename": "pose_landmarker_heavy.task",
-    },
-    "full": {
-        "label": "Full",
-        "url": (
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-            "pose_landmarker_full/float16/1/pose_landmarker_full.task"
-        ),
-        "filename": "pose_landmarker_full.task",
-    },
-    "lite": {
-        "label": "Lite",
-        "url": (
-            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-            "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
-        ),
-        "filename": "pose_landmarker_lite.task",
-    },
-}
 
 @dataclass(frozen=True)
 class CameraDevice:
@@ -115,59 +87,6 @@ def enumerate_available_cameras() -> list[CameraDevice]:
     return []
 
 
-POSE_CONNECTIONS = (
-    (0, 1), (1, 2), (2, 3), (3, 7),
-    (0, 4), (4, 5), (5, 6), (6, 8),
-    (9, 10),
-    (11, 12),
-    (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), (17, 19),
-    (12, 14), (14, 16), (16, 18), (16, 20), (16, 22), (18, 20),
-    (11, 23), (12, 24), (23, 24),
-    (23, 25), (25, 27), (27, 29), (29, 31), (27, 31),
-    (24, 26), (26, 28), (28, 30), (30, 32), (28, 32),
-)
-
-
-def default_model_path(variant: str = BEST_MODEL_VARIANT) -> Path:
-    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS[BEST_MODEL_VARIANT])
-    if os.name == "nt":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home()))
-    else:
-        root = Path.home() / ".local" / "share"
-    return (
-        root
-        / "NegativeStudios"
-        / "MineimatorMotionCapture"
-        / "models"
-        / model["filename"]
-    )
-
-
-def _download_model(target: Path, variant: str, status_callback) -> None:
-    model = MODEL_VARIANTS.get(variant, MODEL_VARIANTS[BEST_MODEL_VARIANT])
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(".download")
-    request = urllib.request.Request(
-        model["url"],
-        headers={"User-Agent": "MineimatorMotionCapture/0.2"},
-    )
-    status_callback(f"Descargando el modelo {model['label']} de seguimiento corporal...")
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            with temporary.open("wb") as output:
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-        if not temporary.exists() or temporary.stat().st_size < 500_000:
-            raise RuntimeError("El archivo del modelo descargado está incompleto.")
-        temporary.replace(target)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 class CameraWorker(QThread):
     pose_ready = Signal(object, float)
     capture_drained = Signal()
@@ -183,7 +102,6 @@ class CameraWorker(QThread):
     def __init__(
         self,
         camera_index: int,
-        model_variant: str = BEST_MODEL_VARIANT,
         parent=None,
         camera_backend: int | None = None,
         camera_name: str | None = None,
@@ -193,18 +111,11 @@ class CameraWorker(QThread):
         self.camera_index = camera_index
         self.camera_backend = camera_backend
         self.camera_name = camera_name or f"Cámara {camera_index}"
-        self.model_variant = model_variant if model_variant in MODEL_VARIANTS else BEST_MODEL_VARIANT
         self._preview_fps = max(10, min(60, int(preview_fps)))
         self._preview_interval = 1.0 / self._preview_fps
         self._running = True
 
-        # La cámara y MediaPipe trabajan por separado para que el análisis no
-        # bloquee la lectura ni la presentación del vídeo.
-        # REC keeps a short timestamped history; idle preview only needs the
-        # newest pending frame. The buffer is bounded to avoid unbounded memory.
-        # Up to five minutes at 60 FPS. REC frames are JPEG-compressed at
-        # camera capture time, so even slow inference does not consume one
-        # full-resolution BGR buffer per pending frame.
+        # REC frames are timestamped and processed as a complete sequence after recording.
         self._inference_queue = queue.Queue(maxsize=18_000)
         self._capture_mode_lock = threading.Lock()
         self._recording_capture = False
@@ -220,15 +131,8 @@ class CameraWorker(QThread):
         self._latest_preview: tuple[int, QImage] | None = None
         self._preview_sequence = 0
 
-        self._landmarks_lock = threading.Lock()
-        self._latest_image_landmarks: list[list[float]] | None = None
-
     def stop(self) -> None:
         self._running = False
-
-    def set_preview_fps(self, fps: int) -> None:
-        self._preview_fps = max(10, min(60, int(fps)))
-        self._preview_interval = 1.0 / self._preview_fps
 
     def begin_recording_capture(self) -> None:
         """Start a fresh timestamped inference queue for a new recording."""
@@ -275,19 +179,6 @@ class CameraWorker(QThread):
             self._latest_preview = (self._preview_sequence, image)
 
     @staticmethod
-    def _enqueue_latest(target_queue: queue.Queue, item: tuple) -> None:
-        """Keep only the newest pending frame outside a recording."""
-        while True:
-            try:
-                target_queue.get_nowait()
-            except queue.Empty:
-                break
-        try:
-            target_queue.put_nowait(item)
-        except queue.Full:
-            pass
-
-    @staticmethod
     def _enqueue_recording(target_queue: queue.Queue, item: tuple) -> None:
         """Keep a bounded chronological buffer while preserving recent motion."""
         try:
@@ -303,27 +194,6 @@ class CameraWorker(QThread):
             target_queue.put_nowait(item)
         except queue.Full:
             pass
-
-    @staticmethod
-    def _landmark_values(points) -> list[list[float]]:
-        return [
-            [
-                float(point.x),
-                float(point.y),
-                float(point.z),
-                (
-                    1.0
-                    if getattr(point, "visibility", None) is None
-                    else float(point.visibility)
-                ),
-                (
-                    1.0
-                    if getattr(point, "presence", None) is None
-                    else float(point.presence)
-                ),
-            ]
-            for point in points
-        ]
 
     def _run_pose_inference(self) -> None:
         try:
@@ -389,6 +259,8 @@ class CameraWorker(QThread):
     def _process_motionbert_capture(self) -> None:
         import tempfile
 
+        from .motionbert import resample_capture_timestamps
+
         with self._capture_mode_lock:
             captured_frames = list(self._motion_frames)
             self._motion_frames.clear()
@@ -397,15 +269,21 @@ class CameraWorker(QThread):
             self.status.emit("No se recibieron fotogramas para reconstruir.")
             return
 
-        self.status.emit(
-            f"Preparando {len(captured_frames)} fotogramas para la reconstrucción 3D..."
+        source_timestamps = [captured_at for _, captured_at in captured_frames]
+        frame_indices, output_timestamps = resample_capture_timestamps(
+            source_timestamps,
+            fps=float(DEFAULT_PREVIEW_FPS),
         )
-        timestamps: list[float] = []
+        self.status.emit(
+            f"Normalizando {len(captured_frames)} fotogramas a "
+            f"{len(frame_indices)} muestras temporales de 30 FPS..."
+        )
 
         with tempfile.TemporaryDirectory(prefix="mineimator-motionbert-") as temp_dir:
             video_path = Path(temp_dir) / "captura.avi"
+            first_encoded = captured_frames[frame_indices[0]][0]
             first_frame = cv2.imdecode(
-                np.frombuffer(captured_frames[0][0], dtype=np.uint8),
+                np.frombuffer(first_encoded, dtype=np.uint8),
                 cv2.IMREAD_COLOR,
             )
             if first_frame is None:
@@ -415,38 +293,44 @@ class CameraWorker(QThread):
             writer = cv2.VideoWriter(
                 str(video_path),
                 cv2.VideoWriter_fourcc(*"MJPG"),
-                30.0,
+                float(DEFAULT_PREVIEW_FPS),
                 (width, height),
             )
             if not writer.isOpened():
                 raise RuntimeError("No se pudo crear el video temporal para MotionBERT.")
 
+            written_timestamps: list[float] = []
+            last_valid_frame = first_frame
             try:
-                for encoded_frame, captured_at in captured_frames:
+                for frame_index, captured_at in zip(frame_indices, output_timestamps):
+                    encoded_frame = captured_frames[frame_index][0]
                     frame = cv2.imdecode(
                         np.frombuffer(encoded_frame, dtype=np.uint8),
                         cv2.IMREAD_COLOR,
                     )
                     if frame is None:
-                        continue
-                    if frame.shape[1] != width or frame.shape[0] != height:
-                        frame = cv2.resize(frame, (width, height))
+                        frame = last_valid_frame
+                    else:
+                        if frame.shape[1] != width or frame.shape[0] != height:
+                            frame = cv2.resize(frame, (width, height))
+                        last_valid_frame = frame
+
                     writer.write(frame)
-                    timestamps.append(captured_at)
+                    written_timestamps.append(captured_at)
             finally:
                 writer.release()
 
-            if not timestamps:
+            if not written_timestamps:
                 raise RuntimeError("No quedaron fotogramas válidos en el video temporal.")
 
             self.status.emit(
-                "Procesando la grabación con RTMPose-M, RTMDet-M y MotionBERT. "
+                "Procesando la grabación con RTMDet-M, RTMPose-M y MotionBERT. "
                 "La reconstrucción puede tardar más que la grabación."
             )
             processing_started = time.monotonic()
             count = self._motionbert_processor(
                 video_path,
-                timestamps,
+                written_timestamps,
                 lambda pose, captured_at: self.pose_ready.emit(pose, captured_at),
                 self.status.emit,
             )
@@ -532,14 +416,6 @@ class CameraWorker(QThread):
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
-                # Idle tracks the newest original frame. During REC, preserve the
-                # requested 640x480 detail: the old 480x360 downscale made the
-                # recorded landmarks differ from the full-resolution preview.
-                # Only reduce cameras that return a larger-than-requested image.
-                with self._capture_mode_lock:
-                    recording = self._recording_capture and not self._draining_capture
-                    idle_tracking = not self._recording_capture and not self._draining_capture
-
                 if recording:
                     source_height, source_width = frame.shape[:2]
                     resize_factor = min(
@@ -570,14 +446,6 @@ class CameraWorker(QThread):
                                     self._inference_queue,
                                     (encoded_frame.tobytes(), captured_at, timestamp_ms),
                                 )
-                elif idle_tracking:
-                    with self._capture_mode_lock:
-                        if not self._recording_capture and not self._draining_capture:
-                            self._enqueue_latest(
-                                self._inference_queue,
-                                (frame.copy(), captured_at, timestamp_ms),
-                            )
-
                 now = time.monotonic()
                 interval = now - stats_started_at
                 if interval >= 1.0:
@@ -587,15 +455,7 @@ class CameraWorker(QThread):
                     camera_frames = 0
                     stats_started_at = now
 
-                if captured_at - last_preview_published >= self._preview_interval:
-                    with self._landmarks_lock:
-                        latest_landmarks = self._latest_image_landmarks
-
-                    preview_frame = frame.copy()
-                    if latest_landmarks:
-                        self._draw_pose(preview_frame, latest_landmarks)
-
-                    mirrored = cv2.flip(preview_frame, 1)
+                    mirrored = cv2.flip(frame, 1)
                     rgb_preview = cv2.cvtColor(mirrored, cv2.COLOR_BGR2RGB)
                     height, width, _ = rgb_preview.shape
                     image = QImage(
