@@ -62,3 +62,16 @@ def test_latest_queue_discards_backlog_outside_recording():
 
     assert pending.qsize() == 1
     assert pending.get_nowait()[0] is frames[-1]
+
+
+
+def test_recording_capture_state_is_read_from_worker():
+    worker = CameraWorker(0)
+
+    assert not worker._is_recording_capture()
+
+    worker.begin_recording_capture()
+    assert worker._is_recording_capture()
+
+    worker.finish_recording_capture()
+    assert not worker._is_recording_capture()
