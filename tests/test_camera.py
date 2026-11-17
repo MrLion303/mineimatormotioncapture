@@ -2,7 +2,7 @@ import queue
 
 from PySide6.QtGui import QImage
 
-from mocap_app.camera import CameraWorker
+from mocap_app.camera import CameraWorker, _strict_capture_timestamp
 
 
 def test_inference_queue_keeps_the_most_recent_frame():
@@ -63,6 +63,18 @@ def test_latest_queue_discards_backlog_outside_recording():
     assert pending.qsize() == 1
     assert pending.get_nowait()[0] is frames[-1]
 
+
+
+def test_recording_timestamps_stay_increasing_when_clock_values_repeat():
+    repeated_clock_value = 123.4567
+    timestamps = [
+        _strict_capture_timestamp(repeated_clock_value, 123456),
+        _strict_capture_timestamp(repeated_clock_value, 123457),
+        _strict_capture_timestamp(repeated_clock_value, 123458),
+    ]
+
+    assert timestamps == [123.4567, 123.457, 123.458]
+    assert all(current > previous for previous, current in zip(timestamps, timestamps[1:]))
 
 
 def test_recording_capture_state_is_read_from_worker():
