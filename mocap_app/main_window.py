@@ -153,7 +153,7 @@ class MainWindow(QMainWindow):
         self.preview_fps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview_header.addWidget(self.preview_fps_label)
 
-        self.pose_fps_label = QLabel("TRACK  -- FPS")
+        self.pose_fps_label = QLabel("3D  -- FPS")
         self.pose_fps_label.setObjectName("poseBadge")
         self.pose_fps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview_header.addWidget(self.pose_fps_label)
@@ -757,7 +757,7 @@ class MainWindow(QMainWindow):
         self._last_preview_sequence = 0
         self.last_image = None
         self.preview_fps_label.setText("CAM  -- FPS")
-        self.pose_fps_label.setText("TRACK  -- FPS")
+        self.pose_fps_label.setText("3D  -- FPS")
         self.preview_timer.start()
         self.camera_button.setText("Conectando...")
         self.camera_button.setEnabled(False)
@@ -833,7 +833,7 @@ class MainWindow(QMainWindow):
         self.preview.setPixmap(QPixmap())
         self.preview.setText("Conecta una cámara para comenzar el seguimiento.")
         self.preview_fps_label.setText("CAM  -- FPS")
-        self.pose_fps_label.setText("TRACK  -- FPS")
+        self.pose_fps_label.setText("3D  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(bool(self.camera_devices))
@@ -860,7 +860,7 @@ class MainWindow(QMainWindow):
         self.preview.setPixmap(QPixmap())
         self.preview.setText("Conecta una cámara para comenzar el seguimiento.")
         self.preview_fps_label.setText("CAM  -- FPS")
-        self.pose_fps_label.setText("TRACK  -- FPS")
+        self.pose_fps_label.setText("3D  -- FPS")
         self.camera_button.setText("Conectar cámara")
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(bool(self.camera_devices))
@@ -890,7 +890,7 @@ class MainWindow(QMainWindow):
         self.preview_fps_label.setText(f"CAM  {fps:04.1f} FPS")
 
     def _update_pose_fps(self, fps: float) -> None:
-        self.pose_fps_label.setText(f"TRACK  {fps:04.1f} FPS")
+        self.pose_fps_label.setText(f"3D  {fps:04.1f} FPS")
 
     def _render_preview(self, smooth: bool = False) -> None:
         if self.last_image is None:
