@@ -1,8 +1,8 @@
-# Retargeting de movimiento
+# Retargeting de movimiento (0.2.12)
 
 ## Principio de conversión
 
-El conversor utiliza los canales nativos del rig humano de Mine-imator y calibra la postura inicial de cada articulación. Los landmarks de MediaPipe están expresados en el sistema de coordenadas de la cámara; no deben escribirse como rotaciones absolutas del personaje. En la exportación, el primer valor fiable de cada canal se toma como referencia y los keyframes contienen el cambio respecto a esa postura.
+El conversor utiliza los canales nativos del rig humano de Mine-imator y calibra la postura inicial. Los landmarks de MediaPipe están expresados en el sistema de coordenadas de la cámara; no deben escribirse como rotaciones absolutas del personaje. En lugar de calcular tres ángulos independientes desde una sola línea, se construye un marco 3D ortonormal con los centros de hombros y caderas, el eje de hombros y su perpendicular. La rotación que se exporta es la diferencia entre el marco inicial y el marco actual, descompuesta en XYZ. Esto permite medir por separado una reverencia, una inclinación lateral y un giro del torso.
 
 La raíz `char` permanece fija. No se generan traslaciones, giros globales ni desplazamientos de las articulaciones.
 
@@ -17,7 +17,7 @@ La raíz `char` permanece fija. No se generan traslaciones, giros globales ni de
 | `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 | `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 
-El torso se anima con los tres canales `BEND_ANGLE`, no con `ROT_X/Y/Z`. La cabeza utiliza X y Z; no se escribe una rotación Y que no aparece en la referencia de rig compartida. Brazos y piernas usan orientación y flexión por separado: el vector del segmento superior produce las rotaciones y el ángulo de tres puntos produce la flexión del codo o la rodilla. No se inventa torsión axial, por lo que `ROT_Y` de las extremidades permanece en cero.
+El torso se anima con los tres canales `BEND_ANGLE`, no con `ROT_X/Y/Z`. La cabeza utiliza X y Z. Los brazos se miden en el marco local del torso actual, de modo que el giro del torso no se duplica como giro del brazo. Las piernas se miden respecto al marco de referencia fijo porque son hijas de `char`, no del torso. Brazos y piernas usan orientación y flexión por separado: el vector del segmento superior produce las rotaciones y el ángulo de tres puntos produce la flexión del codo o la rodilla. No se inventa torsión axial, por lo que `ROT_Y` de las extremidades permanece en cero.
 
 ## Calibración de postura inicial
 
@@ -35,11 +35,13 @@ El exportador conserva las propiedades estáticas que no anima, incluidas las po
 
 ## Keyframes y suavizado
 
-Las muestras se ordenan por su timestamp y se interpolan al FPS de exportación. La optimización retiene el primer y último fotograma, agrega claves al superar aproximadamente 1° de cambio y limita el espacio entre claves a 0.20 segundos. Desactivar la optimización escribe todos los fotogramas.
+Las muestras se ordenan por su timestamp y se interpolan a 30 FPS. La optimización retiene el primer y último fotograma, agrega claves al superar aproximadamente 0.8° de cambio y limita el espacio entre claves a 0.15 segundos.
 
-La opción de estabilización aplica un suavizado ligero a los canales angulares. Se puede desactivar para conservar más literalmente las variaciones detectadas.
+La estabilización combina una mediana temporal de tres muestras para rechazar saltos aislados y un filtro adaptativo tipo One Euro. Durante gestos rápidos aumenta el corte del filtro para no aplanar movimientos intencionales. Las piernas reciben una ganancia de 0.72 en rotación y 0.68 en flexión, además de una zona muerta de 1–1.5° para limitar la exageración de pequeñas variaciones del tracking.
 
 ## Captura de cámara
+
+El modelo Heavy es el único modelo disponible en la interfaz. Se utilizan umbrales de confianza 0.55 para detección/presencia y 0.60 para tracking. La vista previa y la exportación están fijadas a 30 FPS.
 
 Durante REC cada frame se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La captura conserva la resolución solicitada de 640×480; únicamente reduce imágenes mayores a ese tamaño. Esto evita que la inferencia durante REC trabaje con una imagen reducida respecto al seguimiento de vista previa. La inferencia procesa los frames pendientes después de detener la toma; la exportación se habilita cuando la cola se vacía.
 
