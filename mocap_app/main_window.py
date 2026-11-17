@@ -255,7 +255,7 @@ class MainWindow(QMainWindow):
         capture_layout.addLayout(camera_row)
         self._refresh_camera_list()
 
-        model_note = QLabel("MOTOR 3D · RTMDET-M + RTMPOSE-M + MOTIONBERT · CPU")
+        model_note = QLabel("MOTOR 3D · RTMPOSE-M + MOTIONBERT · CPU")
         model_note.setObjectName("fixedSetting")
         model_note.setWordWrap(True)
         capture_layout.addWidget(model_note)
