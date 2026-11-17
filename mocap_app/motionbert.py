@@ -70,7 +70,7 @@ def create_motionbert_inferencer():
     except Exception as exc:
         raise RuntimeError(
             "No se pudo importar MMPose. Comprueba las dependencias de "
-            "RTMPose, RTMDet y MotionBERT."
+            f"RTMPose, RTMDet y MotionBERT. Detalle: {exc}"
         ) from exc
 
     try:
@@ -79,7 +79,7 @@ def create_motionbert_inferencer():
         raise RuntimeError(
             "No se pudieron inicializar los modelos RTMPose/MotionBERT. "
             "Comprueba la conexión a Internet para descargar los pesos "
-            "la primera vez y revisa la instalación de OpenMMLab."
+            f"la primera vez y revisa la instalación de OpenMMLab. Detalle: {exc}"
         ) from exc
 
 
@@ -231,7 +231,7 @@ def _current_pose2d_h36m_scores(inferencer) -> np.ndarray | None:
     pose2d_model = getattr(backend, "pose2d_model", None)
     model = getattr(pose2d_model, "model", None)
     metadata = getattr(model, "dataset_meta", None)
-    dataset_name = metadata.get("dataset_name") if isinstance(metadata, dict) else None
+    dataset_name = metadata.get("dataset_name") if hasattr(metadata, "get") else None
     if dataset_name not in {"coco", "posetrack18"}:
         return None
 
