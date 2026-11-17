@@ -25,8 +25,16 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
-from .camera import CameraDevice, CameraWorker, enumerate_available_cameras
+from .camera import (
+    BEST_MODEL_VARIANT,
+    DEFAULT_PREVIEW_FPS,
+    CameraDevice,
+    CameraWorker,
+    enumerate_available_cameras,
+)
 from .miobject import MiobjectError, export_miobject, load_template
+
+EXPORT_FPS = 30
 
 
 class MainWindow(QMainWindow):
@@ -60,13 +68,12 @@ class MainWindow(QMainWindow):
         self.record_timer.timeout.connect(self._update_recording)
 
         self.preview_timer = QTimer(self)
-        self.preview_timer.setInterval(33)
+        self.preview_timer.setInterval(round(1000.0 / DEFAULT_PREVIEW_FPS))
         self.preview_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.preview_timer.timeout.connect(self._refresh_preview)
         self._last_preview_sequence = 0
 
         self._build_ui()
-        self._update_preview_rate(self.preview_fps_spin.value())
         self._apply_style()
         self._update_actions()
         self._set_status("Conecta una cámara y carga una plantilla humana de Mine-imator.")
@@ -248,18 +255,12 @@ class MainWindow(QMainWindow):
         capture_layout.addLayout(camera_row)
         self._refresh_camera_list()
 
-        capture_layout.addWidget(self._field_label("MODELO DE SEGUIMIENTO"))
-        self.quality_combo = QComboBox()
-        self.quality_combo.addItem("Full  ·  Equilibrado", "full")
-        self.quality_combo.addItem("Heavy  ·  Más exigente", "heavy")
-        self.quality_combo.addItem("Lite  ·  Más ligero", "lite")
-        self.quality_combo.setCurrentIndex(0)
-        capture_layout.addWidget(self.quality_combo)
+        model_note = QLabel("SEGUIMIENTO DE ALTA PRECISIÓN · MODELO HEAVY")
+        model_note.setObjectName("fixedSetting")
+        model_note.setWordWrap(True)
+        capture_layout.addWidget(model_note)
 
         numeric_grid = QGridLayout()
-        numeric_grid.setHorizontalSpacing(10)
-        numeric_grid.setVerticalSpacing(7)
-
         duration_label = self._field_label("DURACIÓN")
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(1, 300)
@@ -267,31 +268,14 @@ class MainWindow(QMainWindow):
         self.duration_spin.setSuffix(" s")
         numeric_grid.addWidget(duration_label, 0, 0)
         numeric_grid.addWidget(self.duration_spin, 1, 0)
-
-        fps_label = self._field_label("FPS DE EXPORTACIÓN")
-        self.fps_spin = QSpinBox()
-        self.fps_spin.setRange(12, 60)
-        self.fps_spin.setValue(30)
-        self.fps_spin.setSuffix(" FPS")
-        numeric_grid.addWidget(fps_label, 0, 1)
-        numeric_grid.addWidget(self.fps_spin, 1, 1)
+        numeric_grid.setColumnStretch(0, 1)
         capture_layout.addLayout(numeric_grid)
 
-        preview_rate_row = QHBoxLayout()
-        preview_rate_label = self._field_label("FPS DE VISTA PREVIA")
-        self.preview_fps_spin = QSpinBox()
-        self.preview_fps_spin.setRange(10, 60)
-        self.preview_fps_spin.setValue(30)
-        self.preview_fps_spin.setSuffix(" FPS")
-        self.preview_fps_spin.setToolTip(
-            "Limita cuántas veces por segundo se actualiza la imagen. "
-            "No cambia los FPS que entrega la cámara."
-        )
-        self.preview_fps_spin.valueChanged.connect(self._update_preview_rate)
-        preview_rate_row.addWidget(preview_rate_label)
-        preview_rate_row.addStretch()
-        preview_rate_row.addWidget(self.preview_fps_spin)
-        capture_layout.addLayout(preview_rate_row)
+        fixed_fps_note = QLabel("Parámetros automáticos: captura optimizada y exportación a 30 FPS.")
+        fixed_fps_note.setObjectName("hint")
+        fixed_fps_note.setWordWrap(True)
+        capture_layout.addWidget(fixed_fps_note)
+
 
         options_panel = QFrame()
         options_panel.setObjectName("innerPanel")
@@ -363,9 +347,8 @@ class MainWindow(QMainWindow):
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "Heavy es el modelo más exigente; Full equilibra calidad y velocidad; "
-            "Lite consume menos recursos. Los FPS de vista previa son independientes "
-            "de la frecuencia real de la cámara."
+            "El seguimiento usa siempre el modelo Heavy. La vista previa y la "
+            "exportación mantienen sus parámetros recomendados automáticamente."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
@@ -736,12 +719,6 @@ class MainWindow(QMainWindow):
                 "No se detectaron cámaras. Conecta una webcam y pulsa Actualizar."
             )
 
-    def _update_preview_rate(self, fps: int) -> None:
-        fps = max(10, min(60, int(fps)))
-        self.preview_timer.setInterval(max(1, round(1000.0 / fps)))
-        if self.camera_worker is not None:
-            self.camera_worker.set_preview_fps(fps)
-
     def _toggle_camera(self) -> None:
         if self.camera_worker is not None:
             self._disconnect_camera()
@@ -757,14 +734,14 @@ class MainWindow(QMainWindow):
             self._set_status("No hay una cámara disponible para conectar.")
             return
 
-        model_variant = str(self.quality_combo.currentData())
+        model_variant = BEST_MODEL_VARIANT
         worker = CameraWorker(
             device.index,
             model_variant,
             self,
             camera_backend=device.backend,
             camera_name=device.name,
-            preview_fps=self.preview_fps_spin.value(),
+            preview_fps=DEFAULT_PREVIEW_FPS,
         )
         self.camera_worker = worker
         worker.pose_ready.connect(self._receive_pose)
@@ -786,8 +763,6 @@ class MainWindow(QMainWindow):
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
         self.refresh_camera_button.setEnabled(False)
-        self.quality_combo.setEnabled(False)
-        self.preview_fps_spin.setEnabled(True)
         self.camera_state_label.setText("CONECTANDO")
         self._set_status(f"Conectando a {device.name}...")
         worker.start()
@@ -811,7 +786,6 @@ class MainWindow(QMainWindow):
         self.camera_button.setText("Cambiando cámara...")
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
-        self.quality_combo.setEnabled(False)
         self.camera_state_label.setText("CAMBIANDO")
         self.preview.clear()
         self.preview.setText(f"Conectando a {device.name}...")
@@ -824,8 +798,6 @@ class MainWindow(QMainWindow):
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(self.state == "idle")
         self.refresh_camera_button.setEnabled(False)
-        self.quality_combo.setEnabled(False)
-        self.preview_fps_spin.setEnabled(True)
         self.camera_state_label.setText("CONECTADA")
         self._update_actions()
 
@@ -866,7 +838,6 @@ class MainWindow(QMainWindow):
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(bool(self.camera_devices))
         self.refresh_camera_button.setEnabled(True)
-        self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self.record_button.setEnabled(False)
         if self.state != "idle":
@@ -894,7 +865,6 @@ class MainWindow(QMainWindow):
         self.camera_button.setEnabled(True)
         self.camera_combo.setEnabled(bool(self.camera_devices))
         self.refresh_camera_button.setEnabled(True)
-        self.quality_combo.setEnabled(True)
         self.camera_state_label.setText("SIN CONEXIÓN")
         self._update_actions()
         self._set_status("Cámara desconectada.")
@@ -962,10 +932,8 @@ class MainWindow(QMainWindow):
         self.countdown_value = 3
         self.state = "countdown"
         self.duration_spin.setEnabled(False)
-        self.fps_spin.setEnabled(False)
         self.camera_button.setEnabled(False)
         self.camera_combo.setEnabled(False)
-        self.quality_combo.setEnabled(False)
         self.record_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.overlay.setText("3")
@@ -1078,7 +1046,6 @@ class MainWindow(QMainWindow):
 
     def _restore_controls(self) -> None:
         self.duration_spin.setEnabled(True)
-        self.fps_spin.setEnabled(True)
         self.camera_button.setEnabled(self.camera_ready)
         self.camera_combo.setEnabled(
             bool(self.camera_devices)
@@ -1086,8 +1053,6 @@ class MainWindow(QMainWindow):
             and (self.camera_worker is None or self.camera_ready)
         )
         self.refresh_camera_button.setEnabled(self.camera_worker is None)
-        self.quality_combo.setEnabled(self.camera_worker is None)
-        self.preview_fps_spin.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
         self.record_button.setEnabled(self.camera_ready)
@@ -1140,7 +1105,7 @@ class MainWindow(QMainWindow):
                 self.template_path,
                 output_path,
                 self.samples,
-                fps=self.fps_spin.value(),
+                fps=EXPORT_FPS,
                 duration_seconds=self.recorded_duration,
                 optimize_keyframes=self.optimize_check.isChecked(),
                 smooth_motion=self.smooth_check.isChecked(),
