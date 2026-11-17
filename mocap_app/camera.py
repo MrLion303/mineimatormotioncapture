@@ -32,6 +32,11 @@ def _camera_backend_name(backend: int) -> str:
         return "OpenCV"
 
 
+def _strict_capture_timestamp(captured_at: float, timestamp_ms: int) -> float:
+    """Combine the precise clock with the strictly increasing millisecond guard."""
+    return max(float(captured_at), int(timestamp_ms) / 1000.0)
+
+
 def enumerate_available_cameras() -> list[CameraDevice]:
     """Return connected capture devices with their actual system names."""
     try:
@@ -224,7 +229,7 @@ class CameraWorker(QThread):
                 with self._capture_mode_lock:
                     self._inference_busy = True
                 try:
-                    frame, captured_at, _timestamp_ms = self._inference_queue.get(timeout=0.1)
+                    frame, captured_at, timestamp_ms = self._inference_queue.get(timeout=0.1)
                 except queue.Empty:
                     with self._capture_mode_lock:
                         self._inference_busy = False
@@ -259,7 +264,13 @@ class CameraWorker(QThread):
                         self._recording_capture or self._draining_capture
                     )
                     if is_capture_frame and isinstance(frame, bytes):
-                        self._motion_frames.append((frame, captured_at))
+                        # captured_at can repeat on clocks with coarse resolution.
+                        # timestamp_ms is already forced to increase by the camera loop.
+                        recording_timestamp = _strict_capture_timestamp(
+                            captured_at,
+                            timestamp_ms,
+                        )
+                        self._motion_frames.append((frame, recording_timestamp))
                     self._inference_busy = False
 
                 self._notify_capture_drained()
