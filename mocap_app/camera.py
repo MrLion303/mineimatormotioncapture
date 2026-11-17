@@ -476,30 +476,3 @@ class CameraWorker(QThread):
                 camera.release()
             if self._inference_thread is not None:
                 self._inference_thread.join()
-
-    @staticmethod
-    def _draw_pose(frame, landmarks) -> None:
-        height, width = frame.shape[:2]
-        points = []
-        for landmark in landmarks:
-            if isinstance(landmark, (list, tuple)):
-                normalized_x = float(landmark[0])
-                normalized_y = float(landmark[1])
-                visibility = float(landmark[3]) if len(landmark) > 3 else 1.0
-            else:
-                normalized_x = float(landmark.x)
-                normalized_y = float(landmark.y)
-                visibility = float(getattr(landmark, "visibility", 1.0))
-
-            x = int(max(0, min(width - 1, normalized_x * width)))
-            y = int(max(0, min(height - 1, normalized_y * height)))
-            points.append((x, y, visibility >= 0.25))
-
-        for start, end in POSE_CONNECTIONS:
-            if points[start][2] and points[end][2]:
-                cv2.line(frame, points[start][:2], points[end][:2], (70, 210, 175), 3, cv2.LINE_AA)
-
-        for x, y, visible in points:
-            if visible:
-                cv2.circle(frame, (x, y), 4, (255, 255, 255), -1, cv2.LINE_AA)
-                cv2.circle(frame, (x, y), 6, (70, 210, 175), 1, cv2.LINE_AA)
