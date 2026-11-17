@@ -18,8 +18,31 @@ PART_FIELDS = {
     "right_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
 }
 
-KEYFRAME_ANGLE_THRESHOLD = 1.0
-MAX_KEYFRAME_INTERVAL_SECONDS = 0.20
+KEYFRAME_ANGLE_THRESHOLD = 0.8
+MAX_KEYFRAME_INTERVAL_SECONDS = 0.15
+
+LEG_MOTION_GAINS = {
+    "ROT_X": 0.72,
+    "ROT_Z": 0.72,
+    "BEND_ANGLE_X": 0.68,
+}
+LEG_MOTION_DEADZONES = {
+    "ROT_X": 1.0,
+    "ROT_Z": 1.0,
+    "BEND_ANGLE_X": 1.5,
+}
+
+
+def _shape_motion_delta(part: str, field: str, value: float) -> float:
+    """Reduce small lower-body overreaction without suppressing large gestures."""
+    if part not in {"left_leg", "right_leg"}:
+        return float(value)
+    magnitude = abs(float(value))
+    deadzone = LEG_MOTION_DEADZONES.get(field, 0.0)
+    if magnitude <= deadzone:
+        return 0.0
+    gain = LEG_MOTION_GAINS.get(field, 1.0)
+    return (magnitude - deadzone) * gain * (1.0 if value >= 0 else -1.0)
 
 
 class MiobjectError(ValueError):
@@ -138,16 +161,37 @@ def _interpolate(times: list[float], values: list[float], target: float) -> floa
     return values[left] + (values[right] - values[left]) * amount
 
 
-def _smooth(values: list[float], enabled: bool) -> list[float]:
+def _smooth(values: list[float], enabled: bool, fps: int = 30) -> list[float]:
     if not enabled or len(values) < 3:
         return values
-    # Landmark filtering already removes most jitter. Keep this angle pass light
-    # so slow, small movements are not swallowed by an overly strong low-pass.
-    alpha = 0.38
-    output = [values[0]]
-    for value in values[1:]:
-        output.append(output[-1] + alpha * (value - output[-1]))
-    return output
+
+    # A 3-frame median rejects isolated landmark jumps. A One-Euro-style filter
+    # then smooths slow tracking noise while raising its cutoff during fast
+    # gestures to avoid the sluggish response of a fixed low-pass filter.
+    from statistics import median
+
+    robust = list(values)
+    for index in range(1, len(values) - 1):
+        robust[index] = median(values[index - 1:index + 2])
+
+    dt = 1.0 / max(1, int(fps))
+
+    def alpha_for(cutoff: float) -> float:
+        tau = 1.0 / (2.0 * 3.141592653589793 * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    filtered = [robust[0]]
+    last_raw = robust[0]
+    derivative = 0.0
+    derivative_alpha = alpha_for(1.0)
+    for value in robust[1:]:
+        raw_derivative = (value - last_raw) / dt
+        derivative += derivative_alpha * (raw_derivative - derivative)
+        cutoff = 1.8 + 0.025 * abs(derivative)
+        alpha = alpha_for(cutoff)
+        filtered.append(filtered[-1] + alpha * (value - filtered[-1]))
+        last_raw = value
+    return filtered
 
 
 def _select_keyframes(
@@ -194,14 +238,20 @@ def export_miobject(
     if not samples:
         raise MiobjectError("No hay muestras de pose para exportar.")
 
-    # The camera coordinate frame is not Mine-imator's local rig frame.
-    # Convert landmarks to native part channels, then calibrate each part from
-    # its first valid sample. This makes the captured starting stance the rest
-    # pose instead of exporting absolute camera-space offsets (often near 180°).
+    # Use the first complete torso frame as the fixed reference for this take.
+    # A complete frame lets the exporter measure a true 3D relative rotation
+    # rather than subtracting unrelated camera-space Euler angles.
+    reference_pose = next(
+        (
+            pose for _, pose in samples
+            if "body" in calculate_pose_controls(pose)
+        ),
+        samples[0][1],
+    )
     static_part_fields = _template_static_part_fields(data)
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose)
+        controls = calculate_pose_controls(pose, reference_pose=reference_pose)
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
     if not converted:
@@ -230,7 +280,11 @@ def export_miobject(
         for part, fields in controls.items():
             part_reference = reference.get(part, {})
             relative_controls[part] = {
-                field: _angle_difference(value, part_reference.get(field, value))
+                field: _shape_motion_delta(
+                    part,
+                    field,
+                    _angle_difference(value, part_reference.get(field, value)),
+                )
                 for field, value in fields.items()
             }
         calibrated.append((timestamp, relative_controls))
@@ -278,6 +332,7 @@ def export_miobject(
             filtered = _smooth(
                 [frame[field] for frame in frame_values],
                 smooth_motion,
+                fps=int(fps),
             )
             for index, value in enumerate(filtered):
                 frame_values[index][field] = value
