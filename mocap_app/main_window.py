@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .camera import (
-    BEST_MODEL_VARIANT,
     DEFAULT_PREVIEW_FPS,
     CameraDevice,
     CameraWorker,
@@ -141,7 +140,7 @@ class MainWindow(QMainWindow):
         preview_heading.setSpacing(2)
         preview_title = QLabel("VISTA EN DIRECTO")
         preview_title.setObjectName("sectionTitle")
-        preview_subtitle = QLabel("Seguimiento corporal en tiempo real")
+        preview_subtitle = QLabel("Cámara en directo; la reconstrucción 3D se calcula después de REC.")
         preview_subtitle.setObjectName("sectionHint")
         preview_heading.addWidget(preview_title)
         preview_heading.addWidget(preview_subtitle)
@@ -255,7 +254,7 @@ class MainWindow(QMainWindow):
         capture_layout.addLayout(camera_row)
         self._refresh_camera_list()
 
-        model_note = QLabel("SEGUIMIENTO DE ALTA PRECISIÓN · MODELO HEAVY")
+        model_note = QLabel("MOTOR 3D · RTMDET-M + RTMPOSE-M + MOTIONBERT · CPU")
         model_note.setObjectName("fixedSetting")
         model_note.setWordWrap(True)
         capture_layout.addWidget(model_note)
@@ -271,7 +270,7 @@ class MainWindow(QMainWindow):
         numeric_grid.setColumnStretch(0, 1)
         capture_layout.addLayout(numeric_grid)
 
-        fixed_fps_note = QLabel("Parámetros automáticos: captura optimizada y exportación a 30 FPS.")
+        fixed_fps_note = QLabel("La secuencia se normaliza a 30 FPS y se exporta a 30 FPS.")
         fixed_fps_note.setObjectName("hint")
         fixed_fps_note.setWordWrap(True)
         capture_layout.addWidget(fixed_fps_note)
@@ -347,8 +346,8 @@ class MainWindow(QMainWindow):
         right_column.addWidget(template_panel)
 
         notice = QLabel(
-            "El seguimiento usa siempre el modelo Heavy. La vista previa y la "
-            "exportación mantienen sus parámetros recomendados automáticamente."
+            "MotionBERT reconstruye el movimiento 3D al terminar cada grabación. "
+            "El personaje conserva la posición de la plantilla."
         )
         notice.setObjectName("hint")
         notice.setWordWrap(True)
@@ -734,10 +733,8 @@ class MainWindow(QMainWindow):
             self._set_status("No hay una cámara disponible para conectar.")
             return
 
-        model_variant = BEST_MODEL_VARIANT
         worker = CameraWorker(
             device.index,
-            model_variant,
             self,
             camera_backend=device.backend,
             camera_name=device.name,
