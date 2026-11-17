@@ -213,6 +213,8 @@ class CameraWorker(QThread):
         self._inference_ready = threading.Event()
         self._inference_error: str | None = None
         self._inference_thread: threading.Thread | None = None
+        self._motion_frames: list[tuple[bytes, float]] = []
+        self._postprocessing_done = True
 
         self._preview_lock = threading.Lock()
         self._latest_preview: tuple[int, QImage] | None = None
@@ -233,6 +235,8 @@ class CameraWorker(QThread):
         with self._capture_mode_lock:
             self._recording_capture = True
             self._draining_capture = False
+            self._motion_frames.clear()
+            self._postprocessing_done = False
             while True:
                 try:
                     self._inference_queue.get_nowait()
@@ -253,6 +257,7 @@ class CameraWorker(QThread):
                 self._draining_capture
                 and not self._inference_busy
                 and self._inference_queue.empty()
+                and self._postprocessing_done
             ):
                 self._draining_capture = False
                 should_emit = True
@@ -320,26 +325,13 @@ class CameraWorker(QThread):
             for point in points
         ]
 
-    def _run_pose_inference(self, model_path: Path) -> None:
-        landmarker = None
+    def _run_pose_inference(self) -> None:
         try:
-            import mediapipe as mp
-            from mediapipe.tasks import python as mp_python
-            from mediapipe.tasks.python import vision
+            from .motionbert import process_motionbert_video
 
-            options = vision.PoseLandmarkerOptions(
-                base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
-                running_mode=vision.RunningMode.VIDEO,
-                num_poses=1,
-                min_pose_detection_confidence=0.55,
-                min_pose_presence_confidence=0.55,
-                min_tracking_confidence=0.60,
-                output_segmentation_masks=False,
-            )
-            landmarker = vision.PoseLandmarker.create_from_options(options)
+            self._motionbert_processor = process_motionbert_video
             self._inference_ready.set()
 
-            last_timestamp_ms = -1
             processed_frames = 0
             stats_started_at = time.monotonic()
 
@@ -347,48 +339,47 @@ class CameraWorker(QThread):
                 with self._capture_mode_lock:
                     self._inference_busy = True
                 try:
-                    frame, captured_at, timestamp_ms = self._inference_queue.get(timeout=0.1)
+                    frame, captured_at, _timestamp_ms = self._inference_queue.get(timeout=0.1)
                 except queue.Empty:
                     with self._capture_mode_lock:
                         self._inference_busy = False
+                        should_process = (
+                            self._draining_capture
+                            and not self._postprocessing_done
+                        )
+                        if should_process:
+                            self._inference_busy = True
+
+                    if should_process:
+                        try:
+                            self._process_motionbert_capture()
+                        except Exception as exc:
+                            self._inference_error = str(exc)
+                            self.failed.emit(
+                                "No se pudo reconstruir la pose 3D con RTMPose/MotionBERT: "
+                                f"{exc}"
+                            )
+                        finally:
+                            with self._capture_mode_lock:
+                                self._inference_busy = False
+                                self._postprocessing_done = True
+                            self._notify_capture_drained()
+                        continue
+
                     self._notify_capture_drained()
                     continue
 
-                if isinstance(frame, bytes):
-                    decoded = cv2.imdecode(
-                        np.frombuffer(frame, dtype=np.uint8),
-                        cv2.IMREAD_COLOR,
-                    )
-                    if decoded is None:
-                        with self._capture_mode_lock:
-                            self._inference_busy = False
-                        self._notify_capture_drained()
-                        continue
-                    frame = decoded
-
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                timestamp_ms = max(last_timestamp_ms + 1, timestamp_ms)
-                last_timestamp_ms = timestamp_ms
-
-                result = landmarker.detect_for_video(mp_image, timestamp_ms)
-                processed_frames += 1
-
-                if result.pose_landmarks:
-                    image_landmarks = self._landmark_values(result.pose_landmarks[0])
-                    with self._landmarks_lock:
-                        self._latest_image_landmarks = image_landmarks
-
-                    if result.pose_world_landmarks:
-                        pose_data = {
-                            "world": self._landmark_values(result.pose_world_landmarks[0]),
-                            "image": image_landmarks,
-                            "image_size": (int(frame.shape[1]), int(frame.shape[0])),
-                        }
-                        self.pose_ready.emit(pose_data, captured_at)
-
                 with self._capture_mode_lock:
+                    is_capture_frame = (
+                        self._recording_capture or self._draining_capture
+                    )
+                    if is_capture_frame and isinstance(frame, bytes):
+                        self._motion_frames.append((frame, captured_at))
                     self._inference_busy = False
+
+                if is_capture_frame:
+                    processed_frames += 1
+
                 self._notify_capture_drained()
                 now = time.monotonic()
                 interval = now - stats_started_at
@@ -399,15 +390,84 @@ class CameraWorker(QThread):
 
         except Exception as exc:
             self._inference_error = str(exc)
-            self.failed.emit(str(exc))
-            self.stop()
-        finally:
+            self.failed.emit(
+                "No se pudo iniciar RTMPose/MotionBERT. "
+                "Comprueba que el entorno MMPose esté instalado: "
+                f"{exc}"
+            )
             self._inference_ready.set()
-            if landmarker is not None:
-                try:
-                    landmarker.close()
-                except Exception:
-                    pass
+            self.capture_drained.emit()
+
+    def _process_motionbert_capture(self) -> None:
+        import tempfile
+
+        with self._capture_mode_lock:
+            captured_frames = list(self._motion_frames)
+            self._motion_frames.clear()
+
+        if not captured_frames:
+            self.status.emit("No se recibieron fotogramas para reconstruir.")
+            return
+
+        self.status.emit(
+            f"Preparando {len(captured_frames)} fotogramas para la reconstrucción 3D..."
+        )
+        timestamps: list[float] = []
+
+        with tempfile.TemporaryDirectory(prefix="mineimator-motionbert-") as temp_dir:
+            video_path = Path(temp_dir) / "captura.avi"
+            first_frame = cv2.imdecode(
+                np.frombuffer(captured_frames[0][0], dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if first_frame is None:
+                raise RuntimeError("El primer fotograma de la captura está dañado.")
+
+            height, width = first_frame.shape[:2]
+            writer = cv2.VideoWriter(
+                str(video_path),
+                cv2.VideoWriter_fourcc(*"MJPG"),
+                30.0,
+                (width, height),
+            )
+            if not writer.isOpened():
+                raise RuntimeError("No se pudo crear el video temporal para MotionBERT.")
+
+            try:
+                for encoded_frame, captured_at in captured_frames:
+                    frame = cv2.imdecode(
+                        np.frombuffer(encoded_frame, dtype=np.uint8),
+                        cv2.IMREAD_COLOR,
+                    )
+                    if frame is None:
+                        continue
+                    if frame.shape[1] != width or frame.shape[0] != height:
+                        frame = cv2.resize(frame, (width, height))
+                    writer.write(frame)
+                    timestamps.append(captured_at)
+            finally:
+                writer.release()
+
+            if not timestamps:
+                raise RuntimeError("No quedaron fotogramas válidos en el video temporal.")
+
+            self.status.emit(
+                "Procesando la grabación con RTMPose-M, RTMDet-M y MotionBERT. "
+                "La reconstrucción puede tardar más que la grabación."
+            )
+            count = self._motionbert_processor(
+                video_path,
+                timestamps,
+                lambda pose, captured_at: self.pose_ready.emit(pose, captured_at),
+                self.status.emit,
+            )
+
+        if count == 0:
+            raise RuntimeError(
+                "MotionBERT no encontró poses válidas. Comprueba la iluminación "
+                "y que el cuerpo completo aparezca en el encuadre."
+            )
+        self.status.emit(f"Reconstrucción 3D terminada: {count} fotogramas.")
 
     def run(self) -> None:
         camera = None
@@ -434,20 +494,14 @@ class CameraWorker(QThread):
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.REQUESTED_HEIGHT)
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-            model_path = default_model_path(self.model_variant)
-            if not model_path.exists():
-                _download_model(model_path, self.model_variant, self.status.emit)
-
             if not self._running:
                 return
 
             self.status.emit(
-                f"Preparando seguimiento corporal ({MODEL_VARIANTS[self.model_variant]['label']}). "
-                "La cámara usará la frecuencia disponible del dispositivo."
+                "Preparando el motor RTMPose-M + RTMDet-M + MotionBERT..."
             )
             self._inference_thread = threading.Thread(
                 target=self._run_pose_inference,
-                args=(model_path,),
                 name=f"PoseInference-{self.camera_index}",
                 daemon=True,
             )
@@ -459,7 +513,10 @@ class CameraWorker(QThread):
             if not self._running or self._inference_error:
                 return
 
-            self.status.emit(f"{self.camera_name} lista. Colócate de cuerpo completo frente a ella.")
+            self.status.emit(
+                f"{self.camera_name} lista. Colócate de cuerpo completo frente a ella. "
+                "La pose 3D se reconstruirá al terminar cada grabación."
+            )
             self.ready.emit()
 
             failed_reads = 0
