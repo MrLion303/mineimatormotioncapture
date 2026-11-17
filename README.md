@@ -63,3 +63,27 @@ MediaPipe estima coordenadas 3D desde una cámara monocular; no mide profundidad
 - OpenCV: acceso a la webcam.
 - PySide6: interfaz.
 - PyInstaller: compilación de Windows.
+
+
+## Rama experimental: RTMPose + MotionBERT
+
+Esta rama sustituye MediaPipe como motor de animación por el pipeline oficial de MMPose `human3d`:
+- RTMDet-M localiza a la persona.
+- RTMPose-M estima las articulaciones 2D.
+- MotionBERT reconstruye la pose 3D usando la secuencia temporal del video.
+- La salida Human3.6M de 17 articulaciones se adapta a los puntos corporales que utiliza el retargeter de Mine-imator.
+
+En esta variante la vista previa muestra la cámara sin el esqueleto superpuesto. La reconstrucción 3D se realiza al terminar la grabación, porque MotionBERT necesita contexto temporal. Por eso el botón de grabación puede permanecer en estado de procesamiento durante un tiempo adicional. El motor está configurado para CPU para no depender de una GPU NVIDIA.
+
+La primera reconstrucción descarga los pesos oficiales de MMPose y puede tardar más. Requiere conexión a Internet. Las coordenadas de cabeza y orejas que no existen en el esqueleto Human3.6M se aproximan a partir de cabeza, cuello y anchura de hombros; no son detecciones independientes.
+
+Dependencias experimentales:
+```powershell
+pip install torch==2.4.1+cpu torchvision==0.19.1+cpu --index-url https://download.pytorch.org/whl/cpu
+pip install openmim
+mim install mmengine
+mim install mmcv==2.1.0
+pip install -r requirements-mmpose.txt
+```
+
+La rama es experimental y no modifica `main`.
