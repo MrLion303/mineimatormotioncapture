@@ -48,7 +48,7 @@ jobs:
           # Dependencias de inferencia necesarias para RTMDet + RTMPose + MotionBERT.
           # MMPose declara chumpy como dependencia heredada para otras funciones
           # (SMPL/mesh); el pipeline human3d de keypoints no lo utiliza.
-          python -m pip install json-tricks munkres "xtcocotools==1.14.3" pycocotools scipy shapely terminaltables tqdm
+          python -m pip install six json-tricks munkres "xtcocotools==1.14.3" pycocotools scipy shapely terminaltables tqdm
           python -m pip install --no-deps -r requirements-mmpose.txt
 
           # Import smoke test: falla el workflow si falta un paquete o si la
