@@ -17,6 +17,8 @@ El procesamiento se ejecuta en CPU para no depender de una GPU NVIDIA. La vista 
 
 La secuencia se remuestrea a 30 FPS a partir de las marcas de tiempo reales de la cámara. Esto conserva la duración del movimiento aunque la webcam entregue una frecuencia distinta. La exportación también se genera a 30 FPS.
 
+La aplicación inicializa el detector y ambos estimadores al conectar la cámara, no al terminar la primera grabación. En Windows usa el detector Faster R-CNN recomendado por las pruebas de compatibilidad de MMPose 1.3.2; en otros sistemas conserva el detector RTMDet del alias `human3d`. Los pesos se descargan durante la primera conexión y se reutilizan en las capturas posteriores.
+
 Human3.6M no incluye nariz ni orejas como articulaciones independientes. Esos puntos auxiliares se aproximan usando la cabeza, el cuello y la anchura de los hombros; no son detecciones directas.
 
 ## Requisitos
@@ -36,12 +38,11 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
-pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
 pip install numpy==1.26.4
 pip install torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
 pip install mmengine==0.10.7
 pip install mmcv==2.1.0 -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
-pip install six json-tricks munkres xtcocotools==1.14.3 pycocotools scipy shapely terminaltables tqdm
+pip install six json-tricks munkres matplotlib pillow xtcocotools==1.14.3 pycocotools scipy shapely terminaltables tqdm
 pip install --no-deps -r requirements-mmpose.txt
 python -c "import torch, mmcv, mmengine, mmdet, mmpose; from mmpose.apis import MMPoseInferencer; print('OpenMMLab listo')"
 ```
