@@ -58,8 +58,10 @@ def resample_capture_timestamps(
     for target_time in target_times:
         while (
             source_index + 1 < len(source_times)
-            and abs(source_times[source_index + 1] - target_time)
-            < abs(source_times[source_index] - target_time)
+            and (
+                abs(source_times[source_index + 1] - target_time) + 1e-9
+                < abs(source_times[source_index] - target_time)
+            )
         ):
             source_index += 1
         source_indices.append(source_index)
