@@ -9,7 +9,12 @@ from mocap_app.miobject import (
     _smooth,
     export_miobject,
 )
-from mocap_app.retarget import calculate_pose_controls
+from mocap_app.retarget import (
+    WORLD_REFERENCE_FRAME,
+    _segment_rotation,
+    _torso_frame,
+    calculate_pose_controls,
+)
 
 
 def standing_pose():
@@ -396,3 +401,82 @@ def test_robust_smoothing_rejects_single_frame_spike_but_keeps_motion():
     assert max(abs(value) for value in filtered) < 1.0
     gradual = _smooth([0.0, 2.0, 4.0, 6.0, 8.0], True, fps=30)
     assert gradual[-1] > 2.0
+
+
+
+def _rotate_pose_x(pose, angle_degrees, indices):
+    import math
+
+    rotated = {
+        "world": [list(point) for point in pose["world"]],
+        "image": pose.get("image", []),
+    }
+    angle = math.radians(angle_degrees)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    for index in indices:
+        x, y, z, *extra = rotated["world"][index]
+        rotated["world"][index] = [
+            x,
+            cosine * y - sine * z,
+            sine * y + cosine * z,
+            *extra,
+        ]
+    return rotated
+
+
+def test_segment_rotation_reconstructs_a_diagonal_3d_direction():
+    from math import cos, radians, sin, sqrt
+
+    local_right = 0.6
+    local_up = -0.3
+    local_forward = sqrt(0.55)
+    world_direction = (
+        local_right,
+        -local_up,
+        -local_forward,
+    )
+
+    rot_x, rot_z = _segment_rotation(
+        (0.0, 0.0, 0.0),
+        world_direction,
+        WORLD_REFERENCE_FRAME,
+    )
+
+    x = radians(rot_x)
+    z = radians(rot_z)
+    reconstructed = (
+        sin(z) * cos(x),
+        -cos(z) * cos(x),
+        sin(x),
+    )
+
+    assert reconstructed[0] == pytest.approx(local_right, abs=1e-6)
+    assert reconstructed[1] == pytest.approx(local_up, abs=1e-6)
+    assert reconstructed[2] == pytest.approx(local_forward, abs=1e-6)
+    assert -90.0 <= rot_x <= 90.0
+
+
+def test_torso_frame_falls_back_to_hip_width_when_shoulders_are_degenerate():
+    pose = standing_pose()
+    # Keep the shoulder midpoint fixed but make its width axis parallel to up.
+    pose["world"][11] = [0.0, -1.45, 0.0, 1.0, 1.0]
+    pose["world"][12] = [0.0, -1.05, 0.0, 1.0, 1.0]
+
+    frame = _torso_frame(pose)
+
+    assert frame is not None
+    assert frame[0] == pytest.approx((1.0, 0.0, 0.0), abs=1e-6)
+    assert frame[1] == pytest.approx((0.0, -1.0, 0.0), abs=1e-6)
+    assert frame[2] == pytest.approx((0.0, 0.0, -1.0), abs=1e-6)
+
+
+def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
+    neutral = standing_pose()
+    rotated = _rotate_pose_x(neutral, 100.0, (11, 12, 23, 24))
+
+    controls = calculate_pose_controls(rotated, reference_pose=neutral)
+
+    assert controls["body"]["BEND_ANGLE_X"] == pytest.approx(100.0, abs=0.01)
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 0.01
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 0.01
