@@ -32,9 +32,16 @@ def _camera_backend_name(backend: int) -> str:
         return "OpenCV"
 
 
-def _strict_capture_timestamp(captured_at: float, timestamp_ms: int) -> float:
-    """Combine the precise clock with the strictly increasing millisecond guard."""
-    return max(float(captured_at), int(timestamp_ms) / 1000.0)
+def _strict_capture_timestamp(
+    captured_at: float,
+    timestamp_ms: int,
+    previous_timestamp: float | None = None,
+) -> float:
+    """Combine the camera clock with a monotonic millisecond guard."""
+    timestamp = max(float(captured_at), int(timestamp_ms) / 1000.0)
+    if previous_timestamp is not None and timestamp <= previous_timestamp:
+        timestamp = previous_timestamp + 0.001
+    return timestamp
 
 
 def enumerate_available_cameras() -> list[CameraDevice]:
@@ -121,7 +128,7 @@ class CameraWorker(QThread):
         self._running = True
 
         # REC frames are timestamped and processed as a complete sequence after recording.
-        self._inference_queue = queue.Queue(maxsize=18_000)
+        self._inference_queue = queue.Queue(maxsize=10_000)
         self._capture_mode_lock = threading.Lock()
         self._recording_capture = False
         self._draining_capture = False
@@ -130,6 +137,7 @@ class CameraWorker(QThread):
         self._inference_error: str | None = None
         self._inference_thread: threading.Thread | None = None
         self._motion_frames: list[tuple[bytes, float]] = []
+        self._motionbert_inferencer = None
         self._postprocessing_done = True
 
         self._preview_lock = threading.Lock()
@@ -220,8 +228,16 @@ class CameraWorker(QThread):
 
     def _run_pose_inference(self) -> None:
         try:
-            from .motionbert import process_motionbert_video
+            from .motionbert import (
+                create_motionbert_inferencer,
+                process_motionbert_video,
+            )
 
+            self.status.emit(
+                "Inicializando RTMPose y MotionBERT. La primera vez se descargan "
+                "los modelos y puede tardar varios minutos..."
+            )
+            self._motionbert_inferencer = create_motionbert_inferencer()
             self._motionbert_processor = process_motionbert_video
             self._inference_ready.set()
 
@@ -278,8 +294,7 @@ class CameraWorker(QThread):
         except Exception as exc:
             self._inference_error = str(exc)
             self.failed.emit(
-                "No se pudo iniciar RTMPose/MotionBERT. "
-                "Comprueba que el entorno MMPose esté instalado: "
+                "No se pudo preparar el motor RTMPose/MotionBERT: "
                 f"{exc}"
             )
             self._inference_ready.set()
@@ -362,6 +377,7 @@ class CameraWorker(QThread):
                 written_timestamps,
                 lambda pose, captured_at: self.pose_ready.emit(pose, captured_at),
                 self.status.emit,
+                inferencer=self._motionbert_inferencer,
             )
             processing_seconds = max(0.001, time.monotonic() - processing_started)
             if count:
@@ -428,6 +444,9 @@ class CameraWorker(QThread):
             camera_frames = 0
             stats_started_at = time.monotonic()
             last_timestamp_ms = -1
+            last_buffered_timestamp: float | None = None
+            last_buffered_at = float("-inf")
+            recording_interval = 1.0 / float(DEFAULT_PREVIEW_FPS)
             last_preview_published = 0.0
 
             while self._running:
@@ -445,7 +464,10 @@ class CameraWorker(QThread):
                 timestamp_ms = max(last_timestamp_ms + 1, int(captured_at * 1000))
                 last_timestamp_ms = timestamp_ms
 
-                if self._is_recording_capture():
+                if (
+                    self._is_recording_capture()
+                    and captured_at - last_buffered_at >= recording_interval - 1e-6
+                ):
                     source_height, source_width = frame.shape[:2]
                     resize_factor = min(
                         1.0,
@@ -466,15 +488,26 @@ class CameraWorker(QThread):
                     encoded_ok, encoded_frame = cv2.imencode(
                         ".jpg",
                         inference_frame,
-                        [cv2.IMWRITE_JPEG_QUALITY, 94],
+                        [cv2.IMWRITE_JPEG_QUALITY, 92],
                     )
                     if encoded_ok:
                         with self._capture_mode_lock:
                             if self._recording_capture and not self._draining_capture:
+                                recording_timestamp = _strict_capture_timestamp(
+                                    captured_at,
+                                    timestamp_ms,
+                                    last_buffered_timestamp,
+                                )
                                 self._enqueue_recording(
                                     self._inference_queue,
-                                    (encoded_frame.tobytes(), captured_at, timestamp_ms),
+                                    (
+                                        encoded_frame.tobytes(),
+                                        recording_timestamp,
+                                        timestamp_ms,
+                                    ),
                                 )
+                                last_buffered_timestamp = recording_timestamp
+                                last_buffered_at = captured_at
                 now = time.monotonic()
                 interval = now - stats_started_at
                 if interval >= 1.0:
