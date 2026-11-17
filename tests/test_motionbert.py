@@ -95,7 +95,7 @@ def test_motionbert_mapping_preserves_keypoint_confidence():
 
     assert world[11][3:] == pytest.approx([0.2, 0.2])
     assert world[0][3:] == pytest.approx([0.4, 0.4])
-    assert world[7][3:] == pytest.approx([0.4, 0.4])
+    assert world[7][3:] == pytest.approx([0.2, 0.2])
 
 
 @pytest.mark.parametrize(
