@@ -367,8 +367,9 @@ class CameraWorker(QThread):
             if not written_timestamps:
                 raise RuntimeError("No quedaron fotogramas válidos en el video temporal.")
 
+            detector_name = "Faster R-CNN" if os.name == "nt" else "RTMDet-M"
             self.status.emit(
-                "Procesando la grabación con RTMDet-M, RTMPose-M y MotionBERT. "
+                f"Procesando la grabación con {detector_name}, RTMPose-M y MotionBERT. "
                 "La reconstrucción puede tardar más que la grabación."
             )
             processing_started = time.monotonic()
