@@ -205,6 +205,49 @@ def _prediction_instance(result: dict):
     return None
 
 
+def _coco_scores_to_h36m(scores) -> np.ndarray | None:
+    """Convert RTMPose COCO confidence scores to MotionBERT's H36M joint order."""
+    values = np.asarray(scores, dtype=np.float32).squeeze()
+    if values.shape != (17,) or not np.isfinite(values).all():
+        return None
+    values = np.clip(values, 0.0, 1.0)
+
+    # Match MMPose's own COCO -> Human3.6M keypoint conversion. Composite
+    # joints use the weaker source confidence so occluded joints stay low.
+    h36m = np.zeros(17, dtype=np.float32)
+    h36m[0] = min(values[11], values[12])  # pelvis from both hips
+    h36m[[1, 2, 3, 4, 5, 6]] = values[[12, 14, 16, 11, 13, 15]]
+    h36m[8] = min(values[5], values[6])  # thorax from both shoulders
+    h36m[7] = min(h36m[0], h36m[8])  # spine from pelvis and thorax
+    h36m[9] = values[0]  # neck from nose
+    h36m[10] = min(values[1], values[2])  # head from both eyes
+    h36m[[11, 12, 13, 14, 15, 16]] = values[[5, 7, 9, 6, 8, 10]]
+    return h36m
+
+
+def _current_pose2d_h36m_scores(inferencer) -> np.ndarray | None:
+    """Read the current frame's RTMPose scores from MMPose's 2D buffer."""
+    backend = getattr(inferencer, "inferencer", None) or inferencer
+    pose2d_model = getattr(backend, "pose2d_model", None)
+    model = getattr(pose2d_model, "model", None)
+    metadata = getattr(model, "dataset_meta", None)
+    dataset_name = metadata.get("dataset_name") if isinstance(metadata, dict) else None
+    if dataset_name not in {"coco", "posetrack18"}:
+        return None
+
+    buffer = getattr(backend, "_buffer", {})
+    frames = buffer.get("pose_est_results_list") if hasattr(buffer, "get") else None
+    if not frames or not frames[-1]:
+        return None
+    instances = frames[-1]
+    sample = instances[0]
+    pred_instances = getattr(sample, "pred_instances", None)
+    scores = getattr(pred_instances, "keypoint_scores", None)
+    if scores is None:
+        return None
+    return _coco_scores_to_h36m(scores)
+
+
 def process_motionbert_video(
     video_path: str | Path,
     timestamps: Iterable[float],
@@ -243,9 +286,14 @@ def process_motionbert_video(
             instance = _prediction_instance(result)
             if instance is None:
                 continue
+            # The 3D inferencer can emit placeholder scores of 1.0.
+            # Prefer the confidence values from the RTMPose 2D detections.
+            keypoint_scores = _current_pose2d_h36m_scores(pose_inferencer)
+            if keypoint_scores is None:
+                keypoint_scores = instance.get("keypoint_scores")
             pose = map_h36m_keypoints_to_pose(
                 instance["keypoints"],
-                instance.get("keypoint_scores"),
+                keypoint_scores,
             )
             pose_callback(pose, captured_at)
             count += 1
