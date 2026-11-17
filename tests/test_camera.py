@@ -87,3 +87,13 @@ def test_recording_capture_state_is_read_from_worker():
 
     worker.finish_recording_capture()
     assert not worker._is_recording_capture()
+
+
+def test_strict_timestamp_also_protects_against_clock_regression():
+    first = _strict_capture_timestamp(50.0, 50000)
+    second = _strict_capture_timestamp(49.0, 49999, first)
+    third = _strict_capture_timestamp(49.0, 49999, second)
+
+    assert first == 50.0
+    assert second > first
+    assert third > second
