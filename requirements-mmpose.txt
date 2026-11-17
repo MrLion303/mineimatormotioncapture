@@ -1,2 +1,5 @@
 mmdet==3.3.0
 mmpose==1.3.2
+# MMPose runtime imports used by the inferencer and visualizer.
+matplotlib
+pillow
