@@ -26,7 +26,7 @@ def test_windowed_stdio_is_restored_and_logged(tmp_path, monkeypatch, missing_st
     for stream_name in missing_streams:
         stream = getattr(sys, stream_name)
         assert stream is not None
-        stream.write(f"{stream_name} recovered\\n")
+        stream.write(f"{stream_name} recovered")
 
     handle = main._stdio_log_handle
     handle.flush()
