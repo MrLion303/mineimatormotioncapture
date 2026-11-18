@@ -4,6 +4,7 @@ import pytest
 from mocap_app.motionbert import (
     _coco_scores_to_h36m,
     _mmpose_metadata_directory,
+    _disable_motionbert_flip_test,
     _motionbert_inferencer_kwargs,
     map_h36m_keypoints_to_pose,
     process_motionbert_video,
@@ -329,4 +330,33 @@ def test_mmpose_metadata_lookup_rejects_incomplete_layout(tmp_path):
     # MMEngine needs both the configs directory and its model-index.yml.
 
     assert _mmpose_metadata_directory(package_dir) is None
+
+def test_motionbert_flip_testing_is_disabled_for_cpu_inference():
+    from types import SimpleNamespace
+
+    test_cfg = {
+        "flip_test": True,
+        "shift_coords": True,
+    }
+    inferencer = SimpleNamespace(
+        inferencer=SimpleNamespace(
+            model=SimpleNamespace(test_cfg=test_cfg)
+        )
+    )
+
+    assert _disable_motionbert_flip_test(inferencer)
+    assert test_cfg == {
+        "flip_test": False,
+        "shift_coords": True,
+    }
+
+
+def test_motionbert_flip_testing_handles_models_without_test_config():
+    from types import SimpleNamespace
+
+    inferencer = SimpleNamespace(
+        inferencer=SimpleNamespace(model=SimpleNamespace())
+    )
+
+    assert not _disable_motionbert_flip_test(inferencer)
 
