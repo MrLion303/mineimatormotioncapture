@@ -302,6 +302,7 @@ def process_motionbert_video(
     pose_callback: Callable[[dict, float], None],
     status_callback: Callable[[str], None],
     inferencer=None,
+    progress_callback: Callable[[int, int, float, float], None] | None = None,
 ) -> int:
     """Run MMPose human3d over a clip and align each result to its source time."""
     captured_times = [float(value) for value in timestamps]
@@ -345,6 +346,13 @@ def process_motionbert_video(
                     f"analizados · {processed_fps:.1f} FPS · "
                     f"restan aprox. {remaining_minutes:02d}:{remaining_seconds:02d}"
                 )
+                if progress_callback is not None:
+                    progress_callback(
+                        frame_index,
+                        len(captured_times),
+                        processed_fps,
+                        remaining,
+                    )
 
             instance = _prediction_instance(result)
             if instance is None:
