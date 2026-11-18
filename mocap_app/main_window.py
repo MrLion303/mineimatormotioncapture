@@ -32,7 +32,7 @@ from .camera import (
     enumerate_available_cameras,
 )
 from .miobject import MiobjectError, export_miobject, load_template
-from .video import VideoWorker
+from .video import VideoWorker, pose_timestamp_is_valid
 
 EXPORT_FPS = 30
 
@@ -1005,7 +1005,12 @@ class MainWindow(QMainWindow):
         if self.state not in ("recording", "finalizing"):
             return
         elapsed = captured_at - self.record_start
-        if 0.0 <= elapsed <= self.recorded_duration + 0.002:
+        if pose_timestamp_is_valid(
+            captured_at,
+            self.record_start,
+            self.recorded_duration,
+            self._processing_source,
+        ):
             if self.samples and elapsed <= self.samples[-1][0]:
                 return
             self.samples.append((elapsed, pose))
@@ -1235,6 +1240,7 @@ class MainWindow(QMainWindow):
         self._capture_error = None
         self.recorded_duration = 0.0
         self.record_limit = 0.0
+        self.record_start = 0.0
         self._processing_source = "video"
         self.state = "finalizing"
         self.progress_caption.setText("PROCESO DE VÍDEO")
