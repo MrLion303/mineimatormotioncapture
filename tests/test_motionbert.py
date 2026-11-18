@@ -289,6 +289,7 @@ def test_motionbert_video_reports_progress_and_estimated_time():
 
     statuses = []
     emitted = []
+    progress_updates = []
     timestamps = [index / 30.0 for index in range(16)]
     count = process_motionbert_video(
         "capture.avi",
@@ -296,6 +297,7 @@ def test_motionbert_video_reports_progress_and_estimated_time():
         lambda pose, timestamp: emitted.append((pose, timestamp)),
         statuses.append,
         inferencer=FakeInferencer(),
+        progress_callback=lambda *values: progress_updates.append(values),
     )
 
     assert count == 16
@@ -303,6 +305,10 @@ def test_motionbert_video_reports_progress_and_estimated_time():
     assert any("15/16" in status for status in statuses)
     assert any("16/16" in status for status in statuses)
     assert any("FPS" in status and "restan aprox." in status for status in statuses)
+    assert progress_updates
+    assert progress_updates[-1][:2] == (16, 16)
+    assert progress_updates[-1][2] > 0
+    assert progress_updates[-1][3] >= 0
 
 
 def test_mmpose_metadata_lookup_accepts_pyinstaller_repo_layout(tmp_path):
