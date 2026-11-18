@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 import traceback
 from pathlib import Path
 
@@ -68,7 +69,7 @@ class VideoWorker(QThread):
             inferencer = create_motionbert_inferencer()
             self.status.emit("Vídeo abierto. Reconstruyendo el movimiento 3D...")
 
-            processing_started = __import__("time").monotonic()
+            processing_started = time.monotonic()
             count = process_motionbert_video(
                 self.video_path,
                 timestamps,
@@ -81,7 +82,7 @@ class VideoWorker(QThread):
                     )
                 ),
             )
-            elapsed = max(0.001, __import__("time").monotonic() - processing_started)
+            elapsed = max(0.001, time.monotonic() - processing_started)
             if count == 0:
                 raise RuntimeError(
                     "MotionBERT no encontró poses válidas. Comprueba que el cuerpo "
