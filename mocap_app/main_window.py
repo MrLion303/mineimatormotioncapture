@@ -32,6 +32,7 @@ from .camera import (
     enumerate_available_cameras,
 )
 from .miobject import MiobjectError, export_miobject, load_template
+from .video import VideoWorker
 
 EXPORT_FPS = 30
 
@@ -44,7 +45,10 @@ class MainWindow(QMainWindow):
         self.resize(1180, 800)
 
         self.camera_worker: CameraWorker | None = None
+        self.video_worker: VideoWorker | None = None
         self.camera_devices: list[CameraDevice] = []
+        self.video_path: Path | None = None
+        self._processing_source = "camera"
         self.camera_ready = False
         self._camera_switch_pending = False
         self.template_path: Path | None = None
@@ -76,7 +80,9 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._apply_style()
         self._update_actions()
-        self._set_status("Conecta una cámara y carga una plantilla humana de Mine-imator.")
+        self._set_status(
+            "Selecciona un vídeo y una plantilla para convertirlo, o conecta una cámara para grabar."
+        )
 
     def _build_ui(self) -> None:
         scroll = QScrollArea(self)
@@ -167,7 +173,7 @@ class MainWindow(QMainWindow):
         preview_host = QWidget()
         preview_grid = QGridLayout(preview_host)
         preview_grid.setContentsMargins(0, 0, 0, 0)
-        self.preview = QLabel("Conecta una cámara para comenzar el seguimiento.")
+        self.preview = QLabel("Selecciona un vídeo para procesarlo o conecta una cámara.")
         self.preview.setObjectName("preview")
         self.preview.setMinimumSize(480, 320)
         self.preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -237,13 +243,33 @@ class MainWindow(QMainWindow):
         right_column.setSpacing(12)
         content.addLayout(right_column, 4)
 
-        capture_panel = self._panel("AJUSTES DE CAPTURA")
+        video_panel = self._panel("IMPORTAR VÍDEO")
+        video_layout = video_panel.layout()
+        self.video_label = QLabel("Ningún vídeo seleccionado")
+        self.video_label.setObjectName("fileLabel")
+        self.video_label.setWordWrap(True)
+        video_layout.addWidget(self.video_label)
+
+        self.select_video_button = QPushButton("Seleccionar vídeo")
+        self.select_video_button.setObjectName("secondaryButton")
+        self.select_video_button.clicked.connect(self._select_video)
+        video_layout.addWidget(self.select_video_button)
+
+        self.process_video_button = QPushButton("PROCESAR VÍDEO")
+        self.process_video_button.setObjectName("primaryButton")
+        self.process_video_button.setMinimumHeight(44)
+        self.process_video_button.clicked.connect(self._process_video)
+        video_layout.addWidget(self.process_video_button)
+        right_column.addWidget(video_panel)
+
+        capture_panel = self._panel("CAPTURA POR CÁMARA")
         capture_layout = capture_panel.layout()
 
         capture_layout.addWidget(self._field_label("DISPOSITIVO"))
         camera_row = QHBoxLayout()
         self.camera_combo = QComboBox()
         self.camera_combo.setMinimumWidth(0)
+        self.camera_combo.setPlaceholderText("Pulsa Actualizar para buscar cámaras")
         self.camera_combo.currentIndexChanged.connect(self._on_camera_selection_changed)
         camera_row.addWidget(self.camera_combo, 1)
 
@@ -254,7 +280,6 @@ class MainWindow(QMainWindow):
         self.refresh_camera_button.clicked.connect(self._refresh_camera_list)
         camera_row.addWidget(self.refresh_camera_button)
         capture_layout.addLayout(camera_row)
-        self._refresh_camera_list()
 
         model_note = QLabel("MOTOR 3D · RTMPOSE-M + MOTIONBERT · CPU")
         model_note.setObjectName("fixedSetting")
@@ -993,6 +1018,7 @@ class MainWindow(QMainWindow):
         self.samples.clear()
         self.record_limit = float(self.duration_spin.value())
         self.countdown_value = 3
+        self._processing_source = "camera"
         self.state = "countdown"
         self.duration_spin.setEnabled(False)
         self.camera_button.setEnabled(False)
@@ -1124,10 +1150,16 @@ class MainWindow(QMainWindow):
                 "y asegúrate de que el cuerpo completo sea visible."
             )
         else:
-            self._set_status(
-                f"Grabación terminada: {self.recorded_duration:.1f} segundos y "
-                f"{len(self.samples)} muestras de pose."
-            )
+            if self._processing_source == "video":
+                self._set_status(
+                    f"Vídeo procesado: {self.recorded_duration:.2f} segundos y "
+                    f"{len(self.samples)} muestras. Ya puedes exportar la animación."
+                )
+            else:
+                self._set_status(
+                    f"Grabación terminada: {self.recorded_duration:.1f} segundos y "
+                    f"{len(self.samples)} muestras de pose."
+                )
         self._update_actions()
 
     def _restore_controls(self) -> None:
@@ -1142,6 +1174,8 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Cancelar / detener")
         self.record_button.setEnabled(self.camera_ready)
+        self.select_video_button.setEnabled(True)
+        self.load_template_button.setEnabled(True)
         self._update_actions()
 
     def _load_template(self) -> None:
@@ -1168,10 +1202,98 @@ class MainWindow(QMainWindow):
         self._set_status("Plantilla humana cargada y validada.")
         self._update_actions()
 
+    def _select_video(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar vídeo para Motion Capture",
+            "",
+            "Vídeos (*.mp4 *.mov *.avi *.mkv *.webm *.m4v);;Todos los archivos (*.*)",
+        )
+        if not filename:
+            return
+        self.video_path = Path(filename)
+        self.video_label.setText(self.video_path.name)
+        self._set_status("Vídeo seleccionado. Carga una plantilla humana y pulsa PROCESAR VÍDEO.")
+        self._update_actions()
+
+    def _process_video(self) -> None:
+        if self.state != "idle":
+            return
+        if self.video_path is None:
+            self._set_status("Selecciona primero un vídeo.")
+            return
+        if self.template_path is None:
+            self._set_status("Selecciona primero una plantilla humana de Mine-imator.")
+            return
+        if self.camera_worker is not None:
+            self._set_status(
+                "Desconecta la cámara antes de procesar un vídeo para no duplicar el motor 3D."
+            )
+            return
+
+        self.samples.clear()
+        self._capture_error = None
+        self.recorded_duration = 0.0
+        self.record_limit = 0.0
+        self._processing_source = "video"
+        self.state = "finalizing"
+        self.progress_caption.setText("PROCESO DE VÍDEO")
+        self.progress.setRange(0, 0)
+        self.time_label.setText("Preparando vídeo...")
+        self.camera_state_label.setText("PROCESANDO VÍDEO")
+        self.preview_timer.stop()
+        self.preview.setPixmap(QPixmap())
+        self.preview.setText(f"Procesando: {self.video_path.name}")
+        self.overlay.hide()
+        self.duration_spin.setEnabled(False)
+        self.camera_button.setEnabled(False)
+        self.camera_combo.setEnabled(False)
+        self.refresh_camera_button.setEnabled(False)
+        self.record_button.setEnabled(False)
+        self.load_template_button.setEnabled(False)
+        self.select_video_button.setEnabled(False)
+        self.stop_button.setEnabled(False)
+        self._set_status(
+            "Abriendo el vídeo y preparando RTMPose + MotionBERT. No hace falta conectar una cámara."
+        )
+
+        worker = VideoWorker(self.video_path, self)
+        self.video_worker = worker
+        worker.pose_ready.connect(self._receive_pose)
+        worker.processing_progress.connect(self._update_processing_progress)
+        worker.pose_fps.connect(self._update_pose_fps)
+        worker.status.connect(self._set_status)
+        worker.failed.connect(self._camera_error)
+        worker.completed.connect(self._video_completed)
+        worker.finished.connect(lambda worker=worker: self._video_finished(worker))
+        self._update_actions()
+        worker.start()
+
+    def _video_completed(self, _pose_count: int, duration: float) -> None:
+        self.recorded_duration = max(0.0, float(duration))
+        self.record_limit = self.recorded_duration
+
+    def _video_finished(self, worker: VideoWorker) -> None:
+        if self.video_worker is not worker:
+            return
+        self.video_worker = None
+        worker.deleteLater()
+        if self.state == "finalizing":
+            self._complete_recording()
+
     def _update_actions(self) -> None:
-        self.record_button.setEnabled(self.camera_ready and self.state == "idle")
+        idle = self.state == "idle"
+        self.record_button.setEnabled(self.camera_ready and idle)
         self.export_button.setEnabled(
-            self.template_path is not None and bool(self.samples) and self.state == "idle"
+            self.template_path is not None and bool(self.samples) and idle
+        )
+        self.select_video_button.setEnabled(idle)
+        self.load_template_button.setEnabled(idle)
+        self.process_video_button.setEnabled(
+            idle
+            and self.video_path is not None
+            and self.template_path is not None
+            and self.camera_worker is None
         )
 
     def _export(self) -> None:
@@ -1228,4 +1350,8 @@ class MainWindow(QMainWindow):
             worker.stop()
             worker.wait()
             self.camera_worker = None
+        video_worker = self.video_worker
+        if video_worker is not None:
+            video_worker.wait()
+            self.video_worker = None
         event.accept()
