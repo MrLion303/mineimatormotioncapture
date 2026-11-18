@@ -77,6 +77,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # El paquete wheel de MMPose conserva sus configuraciones y metadatos
+          # de alias dentro de mmpose/.mim. PyInstaller no siempre recoge esta
+          # carpeta oculta automáticamente; también exponemos configs en la
+          # raíz del bundle, donde MMPose busca sus configuraciones al resolver
+          # los alias human3d / RTMPose.
+          MMPOSE_MIM="$(python -c "from pathlib import Path; import mmpose; print(Path(mmpose.__file__).resolve().parent / '.mim')")"
+          test -d "$MMPOSE_MIM/configs"
+          test -f "$MMPOSE_MIM/model-index.yml"
+
           python -m PyInstaller --noconfirm --clean --windowed \
             --name MineimatorMotionCapture \
             --collect-all cv2 \
@@ -89,6 +99,8 @@ jobs:
             --collect-all mmdet \
             --collect-all mmpose \
             --collect-all xtcocotools \
+            --add-data "$MMPOSE_MIM;mmpose/.mim" \
+            --add-data "$MMPOSE_MIM/configs;configs" \
             --add-data "mocap_app/assets/faster_rcnn_r50_fpn_coco.py;mocap_app/assets" \
             main.py
 
@@ -96,7 +108,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -c "from pathlib import Path; root=Path('dist/MineimatorMotionCapture'); matches=list(root.rglob('faster_rcnn_r50_fpn_coco.py')); assert matches, 'Falta el detector Windows dentro de la aplicación'; print('Configuración incluida:', matches[0])"
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("dist/MineimatorMotionCapture")
+          detector_configs = list(root.rglob("faster_rcnn_r50_fpn_coco.py"))
+          assert detector_configs, "Falta el detector Windows dentro de la aplicación"
+
+          mim_dirs = [
+              path for path in root.rglob(".mim")
+              if (path / "configs").is_dir()
+              and (path / "model-index.yml").is_file()
+          ]
+          assert mim_dirs, "Faltan los metadatos .mim de MMPose dentro de la aplicación"
+
+          config_dirs = [
+              path for path in root.rglob("configs")
+              if path.is_dir()
+              and (path / "body_3d_keypoint").is_dir()
+              and (path / "body_2d_keypoint").is_dir()
+          ]
+          assert config_dirs, "Falta el directorio configs de MMPose en el bundle"
+
+          print("Detector incluido:", detector_configs[0])
+          print("Metadatos MMPose incluidos:", mim_dirs[0])
+          print("Configuraciones MMPose incluidas:", config_dirs[0])
+          PY
 
       - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
