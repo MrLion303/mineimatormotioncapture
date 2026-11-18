@@ -8,7 +8,7 @@ Aplicación de escritorio para capturar movimientos con una webcam y convertirlo
 
 La reconstrucción utiliza el pipeline oficial `human3d` de MMPose:
 
-- **RTMDet-M** detecta a la persona en cada fotograma en sistemas distintos de Windows. En Windows se utiliza **Faster R-CNN**, el detector alternativo empleado por las pruebas de compatibilidad de MMPose 1.3.2.
+- En Windows, la captura de una sola persona usa el fotograma completo como recorte (`whole_image`) y omite un detector pesado por fotograma. En otros sistemas se conserva **RTMDet-M** para localizar a la persona.
 - **RTMPose-M** estima las articulaciones 2D.
 - **MotionBERT** utiliza la secuencia temporal para reconstruir la pose 3D.
 - El esqueleto Human3.6M de 17 articulaciones se adapta a los landmarks que consume el retargeter de Mine-imator.
@@ -17,7 +17,7 @@ El procesamiento se ejecuta en CPU para no depender de una GPU NVIDIA. La vista 
 
 La secuencia se remuestrea a 30 FPS a partir de las marcas de tiempo reales de la cámara. Esto conserva la duración del movimiento aunque la webcam entregue una frecuencia distinta. La exportación también se genera a 30 FPS.
 
-La aplicación inicializa el detector y ambos estimadores al conectar la cámara, no al terminar la primera grabación. En Windows usa el detector Faster R-CNN recomendado por las pruebas de compatibilidad de MMPose 1.3.2; en otros sistemas conserva el detector RTMDet del alias `human3d`. Los pesos se descargan durante la primera conexión y se reutilizan en las capturas posteriores.
+La aplicación inicializa los estimadores al conectar la cámara, no al terminar la primera grabación. En Windows se omite el detector de personas: el usuario debe ser la única persona visible, permanecer centrado y mantener el cuerpo completo dentro del encuadre. Esto evita ejecutar Faster R-CNN en cada fotograma. En otros sistemas se conserva RTMDet-M del alias `human3d`. Los pesos necesarios se descargan durante la primera conexión y se reutilizan en las capturas posteriores. Durante el análisis se muestra el avance, la velocidad y un tiempo restante aproximado.
 
 Las puntuaciones de confianza se toman de las detecciones 2D de RTMPose y se convierten al orden Human3.6M antes del retargeting; así no se depende de las puntuaciones 3D de relleno del estimador. Human3.6M no incluye nariz ni orejas como articulaciones independientes. Esos puntos auxiliares se aproximan usando la cabeza, el cuello y la anchura de los hombros; no son detecciones directas.
 

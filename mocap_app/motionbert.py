@@ -4,6 +4,7 @@ from math import floor, isfinite
 from pathlib import Path
 import platform
 from typing import Callable, Iterable
+import time
 
 import numpy as np
 
@@ -29,13 +30,6 @@ H36M_TO_LANDMARKS = {
 }
 
 DEFAULT_VIDEO_FPS = 30.0
-
-WINDOWS_DETECTOR_WEIGHTS = (
-    "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/"
-    "faster_rcnn_r50_fpn_1x_coco/"
-    "faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
-)
-
 
 def _mmpose_metadata_directory(package_path: str | Path) -> Path | None:
     """Return the metadata root in the exact order used by MMEngine 0.10.7."""
@@ -74,28 +68,16 @@ def _validate_mmpose_config_assets(mmpose_module) -> Path:
 
 
 def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
-    """Build a known-compatible MMPose configuration for the current OS."""
+    """Build a CPU-friendly MMPose configuration for the current OS."""
     system = platform_name or platform.system()
     kwargs = {"pose3d": "human3d", "device": "cpu"}
 
-    # MMPose 1.3.2's own Windows inferencer test replaces the default RTMDet
-    # detector with Faster R-CNN because the RTMDet alias is not reliable there.
+    # This application captures one person who must remain fully visible and
+    # centered. On Windows, use the complete image as the person crop instead
+    # of running a heavyweight detector on every frame. Other systems retain
+    # the RTMDet-M detector from the human3d alias.
     if system.lower().startswith("win"):
-        detector_config = (
-            Path(__file__).resolve().parent
-            / "assets"
-            / "faster_rcnn_r50_fpn_coco.py"
-        )
-        if not detector_config.is_file():
-            raise RuntimeError(
-                "Falta la configuración Faster R-CNN necesaria para Windows: "
-                f"{detector_config}"
-            )
-        kwargs.update(
-            det_model=str(detector_config),
-            det_weights=WINDOWS_DETECTOR_WEIGHTS,
-            det_cat_ids=0,
-        )
+        kwargs["det_model"] = "whole_image"
     return kwargs
 
 
@@ -312,6 +294,7 @@ def process_motionbert_video(
     status_callback("Reconstruyendo el movimiento 3D con MotionBERT...")
     count = 0
     frame_index = 0
+    processing_started = time.monotonic()
     try:
         for result in pose_inferencer(str(video_path)):
             if frame_index >= len(captured_times):
@@ -321,6 +304,20 @@ def process_motionbert_video(
                 )
             captured_at = captured_times[frame_index]
             frame_index += 1
+
+            # Show useful progress during CPU inference, including an ETA.
+            if frame_index % 15 == 0 or frame_index == len(captured_times):
+                elapsed = max(0.001, time.monotonic() - processing_started)
+                processed_fps = frame_index / elapsed
+                remaining = max(0, len(captured_times) - frame_index) / max(
+                    processed_fps, 0.001
+                )
+                remaining_minutes, remaining_seconds = divmod(int(remaining), 60)
+                status_callback(
+                    f"MotionBERT: {frame_index}/{len(captured_times)} fotogramas "
+                    f"analizados · {processed_fps:.1f} FPS · "
+                    f"restan aprox. {remaining_minutes:02d}:{remaining_seconds:02d}"
+                )
 
             instance = _prediction_instance(result)
             if instance is None:
@@ -336,10 +333,6 @@ def process_motionbert_video(
             )
             pose_callback(pose, captured_at)
             count += 1
-            if frame_index % 30 == 0:
-                status_callback(
-                    f"MotionBERT: {frame_index} fotogramas analizados..."
-                )
     finally:
         # MMPose 1.3.2's unified wrapper does not clear Pose3DInferencer's
         # sequence buffer between calls, so explicitly isolate each recording.

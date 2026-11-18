@@ -114,17 +114,14 @@ def test_motionbert_mapping_rejects_invalid_confidence(scores):
     with pytest.raises(ValueError, match="puntuaciones"):
         map_h36m_keypoints_to_pose(joints, scores)
 
-def test_windows_inferencer_uses_the_supported_faster_rcnn_detector():
+def test_windows_inferencer_skips_the_expensive_person_detector():
     kwargs = _motionbert_inferencer_kwargs("Windows")
 
-    assert kwargs["pose3d"] == "human3d"
-    assert kwargs["device"] == "cpu"
-    assert kwargs["det_cat_ids"] == 0
-    assert kwargs["det_model"].endswith("faster_rcnn_r50_fpn_coco.py")
-    assert __import__("pathlib").Path(kwargs["det_model"]).is_file()
-    assert kwargs["det_weights"].endswith(
-        "faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
-    )
+    assert kwargs == {
+        "pose3d": "human3d",
+        "device": "cpu",
+        "det_model": "whole_image",
+    }
 
 
 def test_non_windows_inferencer_keeps_the_human3d_default_detector():
@@ -272,6 +269,39 @@ def test_motionbert_prefers_real_rtmpose_scores_over_placeholder_3d_scores():
     assert world[23][3] == pytest.approx(coco_scores[11])
     assert world[24][3] == pytest.approx(coco_scores[12])
 
+
+
+
+def test_motionbert_video_reports_progress_and_estimated_time():
+    joints = np.zeros((17, 3), dtype=np.float32)
+    scores = np.ones(17, dtype=np.float32)
+
+    class FakeInferencer:
+        def __call__(self, _video_path):
+            for _ in range(16):
+                yield {
+                    "predictions": [[{
+                        "keypoints": joints,
+                        "keypoint_scores": scores,
+                    }]]
+                }
+
+    statuses = []
+    emitted = []
+    timestamps = [index / 30.0 for index in range(16)]
+    count = process_motionbert_video(
+        "capture.avi",
+        timestamps,
+        lambda pose, timestamp: emitted.append((pose, timestamp)),
+        statuses.append,
+        inferencer=FakeInferencer(),
+    )
+
+    assert count == 16
+    assert len(emitted) == 16
+    assert any("15/16" in status for status in statuses)
+    assert any("16/16" in status for status in statuses)
+    assert any("FPS" in status and "restan aprox." in status for status in statuses)
 
 
 def test_mmpose_metadata_lookup_accepts_pyinstaller_repo_layout(tmp_path):
