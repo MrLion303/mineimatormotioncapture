@@ -5,6 +5,7 @@ import queue
 import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -260,11 +261,12 @@ class CameraWorker(QThread):
                         try:
                             self._process_motionbert_capture()
                         except Exception as exc:
-                            self._inference_error = str(exc)
-                            self.failed.emit(
+                            error_message = (
                                 "No se pudo reconstruir la pose 3D con RTMPose/MotionBERT: "
-                                f"{exc}"
+                                f"{exc}\n\nTraza técnica completa:\n{traceback.format_exc()}"
                             )
+                            self._inference_error = error_message
+                            self.failed.emit(error_message)
                         finally:
                             with self._capture_mode_lock:
                                 self._inference_busy = False
@@ -292,11 +294,12 @@ class CameraWorker(QThread):
                 self._notify_capture_drained()
 
         except Exception as exc:
-            self._inference_error = str(exc)
-            self.failed.emit(
+            error_message = (
                 "No se pudo preparar el motor RTMPose/MotionBERT: "
-                f"{exc}"
+                f"{exc}\n\nTraza técnica completa:\n{traceback.format_exc()}"
             )
+            self._inference_error = error_message
+            self.failed.emit(error_message)
             self._inference_ready.set()
             self.capture_drained.emit()
 
@@ -532,7 +535,9 @@ class CameraWorker(QThread):
                     last_preview_published = captured_at
 
         except Exception as exc:
-            self.failed.emit(str(exc))
+            self.failed.emit(
+                f"{exc}\n\nTraza técnica completa:\n{traceback.format_exc()}"
+            )
         finally:
             self._running = False
             if camera is not None:
