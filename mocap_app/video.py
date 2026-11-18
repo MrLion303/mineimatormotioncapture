@@ -25,6 +25,27 @@ def build_video_timeline(frame_count: int, source_fps: float) -> tuple[list[floa
     return timestamps, duration
 
 
+def pose_timestamp_is_valid(
+    captured_at: float,
+    recording_start: float,
+    recording_duration: float,
+    source: str,
+) -> bool:
+    """Validate pose timestamps from either a camera take or an imported clip."""
+    elapsed = float(captured_at) - float(recording_start)
+    if not math.isfinite(elapsed) or elapsed < 0.0:
+        return False
+
+    # Imported-video timestamps are relative to the beginning of the clip.
+    # Its duration is not known to the UI until inference has finished, so do
+    # not compare them against the still-zero camera recording duration.
+    if source == "video":
+        return True
+
+    duration = float(recording_duration)
+    return math.isfinite(duration) and duration >= 0.0 and elapsed <= duration + 0.002
+
+
 class VideoWorker(QThread):
     """Run the same RTMPose + MotionBERT pipeline on a video file, without a camera."""
 
