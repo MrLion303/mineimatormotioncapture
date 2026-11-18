@@ -105,6 +105,7 @@ class CameraWorker(QThread):
     capture_drained = Signal()
     preview_fps = Signal(float)
     pose_fps = Signal(float)
+    processing_progress = Signal(int, int, float, float)
     status = Signal(str)
     ready = Signal()
     failed = Signal(str)
@@ -386,6 +387,11 @@ class CameraWorker(QThread):
                 lambda pose, captured_at: self.pose_ready.emit(pose, captured_at),
                 self.status.emit,
                 inferencer=self._motionbert_inferencer,
+                progress_callback=(
+                    lambda completed, total, fps, remaining: self.processing_progress.emit(
+                        completed, total, fps, remaining
+                    )
+                ),
             )
             processing_seconds = max(0.001, time.monotonic() - processing_started)
             if count:
