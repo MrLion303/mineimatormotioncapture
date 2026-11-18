@@ -170,6 +170,20 @@ def test_left_and_right_legs_follow_their_own_captured_segments():
     assert "char" not in controls
 
 
+def test_knee_bend_direction_distinguishes_forward_from_backward():
+    neutral = standing_pose()
+    forward = standing_pose()
+    backward = standing_pose()
+    forward["world"][25][2] = -0.25
+    backward["world"][25][2] = 0.25
+
+    forward_controls = calculate_pose_controls(forward, reference_pose=neutral)
+    backward_controls = calculate_pose_controls(backward, reference_pose=neutral)
+
+    assert forward_controls["left_leg"]["BEND_ANGLE_X"] > 0.0
+    assert backward_controls["left_leg"]["BEND_ANGLE_X"] < 0.0
+
+
 def test_arm_segments_and_elbow_bends_are_mapped_independently():
     neutral = standing_pose()
     moved = standing_pose()
