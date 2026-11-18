@@ -3,6 +3,7 @@ import pytest
 
 from mocap_app.motionbert import (
     _coco_scores_to_h36m,
+    _mmpose_metadata_directory,
     _motionbert_inferencer_kwargs,
     map_h36m_keypoints_to_pose,
     process_motionbert_video,
@@ -270,4 +271,32 @@ def test_motionbert_prefers_real_rtmpose_scores_over_placeholder_3d_scores():
     assert world[15][3] == pytest.approx(coco_scores[9])
     assert world[23][3] == pytest.approx(coco_scores[11])
     assert world[24][3] == pytest.approx(coco_scores[12])
+
+
+
+def test_mmpose_metadata_lookup_accepts_pyinstaller_repo_layout(tmp_path):
+    package_dir = tmp_path / "mmpose"
+    package_dir.mkdir()
+    (tmp_path / "configs").mkdir()
+    (tmp_path / "model-index.yml").write_text("Import: []\n", encoding="utf-8")
+
+    assert _mmpose_metadata_directory(package_dir) == tmp_path
+
+
+def test_mmpose_metadata_lookup_accepts_installed_mim_layout(tmp_path):
+    package_dir = tmp_path / "mmpose"
+    mim_dir = package_dir / ".mim"
+    (mim_dir / "configs").mkdir(parents=True)
+    (mim_dir / "model-index.yml").write_text("Import: []\n", encoding="utf-8")
+
+    assert _mmpose_metadata_directory(package_dir) == mim_dir
+
+
+def test_mmpose_metadata_lookup_rejects_incomplete_layout(tmp_path):
+    package_dir = tmp_path / "mmpose"
+    package_dir.mkdir()
+    (package_dir.parent / "configs").mkdir()
+    # MMEngine needs both the configs directory and its model-index.yml.
+
+    assert _mmpose_metadata_directory(package_dir) is None
 
