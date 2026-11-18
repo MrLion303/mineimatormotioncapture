@@ -196,11 +196,12 @@ class MainWindow(QMainWindow):
         preview_layout.addLayout(status_row)
 
         progress_row = QHBoxLayout()
-        progress_caption = QLabel("PROGRESO DE CAPTURA")
-        progress_caption.setObjectName("microLabel")
+        self.progress_caption = QLabel("PROGRESO DE CAPTURA")
+        self.progress_caption.setObjectName("microLabel")
         self.time_label = QLabel("Sin grabación")
         self.time_label.setObjectName("timeText")
-        progress_row.addWidget(progress_caption)
+        self.time_label.setMinimumWidth(190)
+        progress_row.addWidget(self.progress_caption)
         progress_row.addStretch()
         progress_row.addWidget(self.time_label)
         preview_layout.addLayout(progress_row)
@@ -773,12 +774,16 @@ class MainWindow(QMainWindow):
         worker.capture_drained.connect(self._capture_drained)
         worker.preview_fps.connect(self._update_preview_fps)
         worker.pose_fps.connect(self._update_pose_fps)
+        worker.processing_progress.connect(self._update_processing_progress)
         worker.status.connect(self._set_status)
         worker.ready.connect(self._camera_ready)
         worker.failed.connect(self._camera_error)
         worker.finished.connect(lambda worker=worker: self._camera_finished(worker))
 
         self.camera_ready = False
+        self.progress_caption.setText("CARGANDO MOTOR 3D")
+        self.progress.setRange(0, 0)
+        self.time_label.setText("Cargando modelos...")
         self._last_preview_sequence = 0
         self.last_image = None
         self.preview_fps_label.setText("CAM  -- FPS")
@@ -824,6 +829,10 @@ class MainWindow(QMainWindow):
         self.camera_combo.setEnabled(self.state == "idle")
         self.refresh_camera_button.setEnabled(False)
         self.camera_state_label.setText("CONECTADA")
+        self.progress_caption.setText("PROGRESO DE CAPTURA")
+        self.progress.setRange(0, 1000)
+        self.progress.setValue(0)
+        self.time_label.setText("Motor 3D listo")
         self._update_actions()
 
     def _camera_error(self, message: str) -> None:
@@ -833,6 +842,10 @@ class MainWindow(QMainWindow):
             # Do not allow a partially reconstructed take to be exported.
             self.samples.clear()
             return
+        self.progress.setRange(0, 1000)
+        self.progress.setValue(0)
+        self.progress_caption.setText("PROGRESO DE CAPTURA")
+        self.time_label.setText("Sin captura")
         self._show_error_dialog(
             "No se pudo iniciar la captura",
             message,
@@ -923,6 +936,25 @@ class MainWindow(QMainWindow):
     def _update_pose_fps(self, fps: float) -> None:
         self.pose_fps_label.setText(f"3D  {fps:04.1f} FPS")
 
+    def _update_processing_progress(
+        self,
+        completed_frames: int,
+        total_frames: int,
+        _fps: float,
+        remaining_seconds: float,
+    ) -> None:
+        if self.state != "finalizing" or total_frames <= 0:
+            return
+        completed_frames = max(0, min(completed_frames, total_frames))
+        percent = int(round(completed_frames / total_frames * 100))
+        self.progress.setRange(0, 1000)
+        self.progress.setValue(int(round(completed_frames / total_frames * 1000)))
+        minutes, seconds = divmod(max(0, int(remaining_seconds)), 60)
+        self.time_label.setText(
+            f"{completed_frames}/{total_frames} · {percent}% · "
+            f"{minutes:02d}:{seconds:02d} restantes"
+        )
+
     def _render_preview(self, smooth: bool = False) -> None:
         if self.last_image is None:
             return
@@ -969,6 +1001,8 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(True)
         self.overlay.setText("3")
         self.overlay.show()
+        self.progress_caption.setText("PROGRESO DE CAPTURA")
+        self.progress.setRange(0, 1000)
         self.time_label.setText("Preparando...")
         self.progress.setValue(0)
         self._set_status("La grabación comenzará en 3 segundos.")
@@ -1040,6 +1074,9 @@ class MainWindow(QMainWindow):
         self.overlay.show()
         self.stop_button.setEnabled(False)
         self.stop_button.setText("Procesando...")
+        self.progress_caption.setText("PROGRESO DE PROCESAMIENTO")
+        self.progress.setRange(0, 0)
+        self.time_label.setText("Preparando vídeo y análisis...")
         self._set_status("Preparando la reconstrucción 3D con MotionBERT...")
 
         worker = self.camera_worker
@@ -1057,18 +1094,25 @@ class MainWindow(QMainWindow):
             return
         self.state = "idle"
         self.overlay.hide()
-        self.progress.setValue(
-            1000 if self.recorded_duration >= self.record_limit
-            else int(self.recorded_duration / self.record_limit * 1000)
-        )
-        self.time_label.setText(f"{len(self.samples)} muestras")
+        self.progress.setRange(0, 1000)
         self._restore_controls()
 
         capture_error = self._capture_error
         self._capture_error = None
         if capture_error:
-            self.samples.clear()
+            self.progress_caption.setText("PROCESAMIENTO INTERRUMPIDO")
+            self.progress.setValue(0)
             self.time_label.setText("Reconstrucción fallida")
+        elif not self.samples:
+            self.progress_caption.setText("SIN POSES DETECTADAS")
+            self.progress.setValue(0)
+            self.time_label.setText("Sin poses válidas")
+        else:
+            self.progress_caption.setText("PROCESAMIENTO COMPLETADO")
+            self.progress.setValue(1000)
+            self.time_label.setText(f"{len(self.samples)} muestras · Listo para exportar")
+        if capture_error:
+            self.samples.clear()
             self._set_status(capture_error)
             self._show_error_dialog(
                 "Falló la reconstrucción 3D",
