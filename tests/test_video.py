@@ -1,6 +1,6 @@
 import pytest
 
-from mocap_app.video import build_video_timeline
+from mocap_app.video import build_video_timeline, pose_timestamp_is_valid
 
 
 def test_video_timeline_preserves_the_source_playback_speed():
@@ -31,3 +31,19 @@ def test_video_timeline_supports_non_integer_source_fps():
 def test_video_timeline_rejects_invalid_metadata(frame_count, source_fps, message):
     with pytest.raises(ValueError, match=message):
         build_video_timeline(frame_count, source_fps)
+
+
+
+def test_imported_video_accepts_pose_timestamps_before_duration_is_known():
+    assert pose_timestamp_is_valid(0.0, 0.0, 0.0, "video")
+    assert pose_timestamp_is_valid(4.5, 0.0, 0.0, "video")
+
+
+@pytest.mark.parametrize("timestamp", [-0.01, float("nan"), float("inf")])
+def test_imported_video_rejects_invalid_pose_timestamps(timestamp):
+    assert not pose_timestamp_is_valid(timestamp, 0.0, 0.0, "video")
+
+
+def test_camera_pose_timestamps_remain_bounded_by_capture_duration():
+    assert pose_timestamp_is_valid(9.9, 100.0, 10.0, "camera")
+    assert not pose_timestamp_is_valid(10.1, 100.0, 10.0, "camera")
