@@ -81,6 +81,27 @@ def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
     return kwargs
 
 
+def _disable_motionbert_flip_test(inferencer) -> bool:
+    """Avoid the second mirrored DSTFormer pass when running on CPU."""
+    backend = getattr(inferencer, "inferencer", None) or inferencer
+    model = getattr(backend, "model", None)
+    test_cfg = getattr(model, "test_cfg", None)
+    if test_cfg is None:
+        return False
+
+    # PoseLifter reads this same test_cfg on every predict() call. The official
+    # MotionBERT config enables flip_test, which otherwise executes the 3D
+    # backbone twice (normal + mirrored input) for every frame.
+    try:
+        test_cfg["flip_test"] = False
+    except (TypeError, AttributeError, KeyError):
+        setattr(test_cfg, "flip_test", False)
+
+    if isinstance(test_cfg, dict):
+        return test_cfg.get("flip_test") is False
+    return getattr(test_cfg, "flip_test", None) is False
+
+
 def create_motionbert_inferencer():
     """Load the complete 2D + 3D inference stack before recording is enabled."""
     try:
@@ -95,7 +116,13 @@ def create_motionbert_inferencer():
     try:
         metadata_dir = _validate_mmpose_config_assets(mmpose)
         print(f"Configuraciones MMPose detectadas en: {metadata_dir}")
-        return MMPoseInferencer(**_motionbert_inferencer_kwargs())
+        inferencer = MMPoseInferencer(**_motionbert_inferencer_kwargs())
+        if _disable_motionbert_flip_test(inferencer):
+            print(
+                "MotionBERT: flip-test desactivado para evitar una segunda "
+                "pasada 3D por fotograma en CPU."
+            )
+        return inferencer
     except Exception as exc:
         raise RuntimeError(
             "No se pudieron inicializar los modelos RTMPose/MotionBERT. "
