@@ -212,9 +212,9 @@ def calculate_pose_controls(
     if current_frame is not None:
         bend_x, bend_y, bend_z = _relative_euler(reference_frame, current_frame)
         controls["body"] = {
-            "BEND_ANGLE_X": bend_x,
-            "BEND_ANGLE_Y": bend_y,
-            "BEND_ANGLE_Z": bend_z,
+            "ROT_X": bend_x,
+            "ROT_Y": bend_y,
+            "ROT_Z": bend_z,
         }
 
         left_arm = _limb_controls(pose, 11, 13, 15, current_frame)
