@@ -45,5 +45,8 @@ def test_imported_video_rejects_invalid_pose_timestamps(timestamp):
 
 
 def test_camera_pose_timestamps_remain_bounded_by_capture_duration():
-    assert pose_timestamp_is_valid(9.9, 100.0, 10.0, "camera")
-    assert not pose_timestamp_is_valid(10.1, 100.0, 10.0, "camera")
+    # Camera timestamps use time.monotonic(), so they are absolute clock
+    # values and must be compared with the equally absolute recording start.
+    assert pose_timestamp_is_valid(109.9, 100.0, 10.0, "camera")
+    assert not pose_timestamp_is_valid(110.1, 100.0, 10.0, "camera")
+    assert not pose_timestamp_is_valid(99.9, 100.0, 10.0, "camera")
