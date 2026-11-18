@@ -79,10 +79,9 @@ jobs:
           set -euo pipefail
 
           # El paquete wheel de MMPose conserva sus configuraciones y metadatos
-          # de alias dentro de mmpose/.mim. PyInstaller no siempre recoge esta
-          # carpeta oculta automáticamente; también exponemos configs en la
-          # raíz del bundle, donde MMPose busca sus configuraciones al resolver
-          # los alias human3d / RTMPose.
+          # de alias dentro de mmpose/.mim. Se incluye la estructura completa
+          # en su ubicación oficial. No se copia configs a la raíz: MMEngine
+          # daría prioridad a esa carpeta y buscaría model-index.yml allí.
           MMPOSE_MIM="$(python -c "from pathlib import Path; import mmpose; print(Path(mmpose.__file__).resolve().parent / '.mim')")"
           test -d "$MMPOSE_MIM/configs"
           test -f "$MMPOSE_MIM/model-index.yml"
@@ -100,7 +99,6 @@ jobs:
             --collect-all mmpose \
             --collect-all xtcocotools \
             --add-data "$MMPOSE_MIM;mmpose/.mim" \
-            --add-data "$MMPOSE_MIM/configs;configs" \
             --add-data "mocap_app/assets/faster_rcnn_r50_fpn_coco.py;mocap_app/assets" \
             main.py
 
@@ -122,18 +120,37 @@ jobs:
           ]
           assert mim_dirs, "Faltan los metadatos .mim de MMPose dentro de la aplicación"
 
-          config_dirs = [
-              path for path in root.rglob("configs")
-              if path.is_dir()
-              and (path / "body_3d_keypoint").is_dir()
-              and (path / "body_2d_keypoint").is_dir()
+          mmpose_mim_dirs = [
+              path for path in mim_dirs
+              if path.parent.name == "mmpose"
+              and (path / "configs" / "body_3d_keypoint" / "motionbert" / "h36m"
+                   / "motionbert_h36m.yml").is_file()
           ]
-          assert config_dirs, "Falta el directorio configs de MMPose en el bundle"
+          assert mmpose_mim_dirs, (
+              "Falta mmpose/.mim con los metadatos y la configuración de MotionBERT"
+          )
 
           print("Detector incluido:", detector_configs[0])
-          print("Metadatos MMPose incluidos:", mim_dirs[0])
-          print("Configuraciones MMPose incluidas:", config_dirs[0])
+          print("Metadatos MMPose incluidos:", mmpose_mim_dirs[0] / "model-index.yml")
+          print("Configuraciones MMPose incluidas:", mmpose_mim_dirs[0] / "configs")
           PY
+
+
+      - name: Probar RTMPose y MotionBERT desde el ejecutable empaquetado
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f mmpose-smoke-test.log
+          if ! ./dist/MineimatorMotionCapture/MineimatorMotionCapture.exe --smoke-test-mmpose; then
+            if [ -f mmpose-smoke-test.log ]; then
+              cat mmpose-smoke-test.log
+            else
+              echo "El ejecutable falló en la prueba del motor y no generó un registro."
+            fi
+            exit 1
+          fi
+          test ! -f mmpose-smoke-test.log
+          echo "El ejecutable empaquetado inicializó RTMPose y MotionBERT correctamente."
 
       - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
