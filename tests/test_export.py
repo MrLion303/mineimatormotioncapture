@@ -136,9 +136,7 @@ def test_direct_retarget_uses_the_native_channels_from_the_mineimator_example():
     assert set(controls) == {
         "body", "head", "left_arm", "right_arm", "left_leg", "right_leg"
     }
-    assert set(controls["body"]) == {
-        "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
-    }
+    assert set(controls["body"]) == {"ROT_X", "ROT_Y", "ROT_Z"}
     assert set(controls["head"]) == {"ROT_X", "ROT_Z"}
 
     for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
@@ -266,10 +264,13 @@ def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
     body = timeline_for(exported, "body")
     first_body = body["keyframes"]["0"]
     assert all(abs(first_body[field]) < 0.001 for field in (
-        "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
+        "ROT_X", "ROT_Y", "ROT_Z"
     ))
-    # Template rotation fields stay fixed; the torso itself animates by bend.
-    for field in ("ROT_X", "ROT_Y", "ROT_Z"):
+    # Torso orientation uses rigid rotation; template bend deformation stays fixed.
+    assert first_body["BEND_ANGLE_X"] == -4.4
+    assert first_body["BEND_ANGLE_Y"] == 2.0
+    assert first_body["BEND_ANGLE_Z"] == 20.4
+    for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"):
         assert len({frame[field] for frame in body["keyframes"].values()}) == 1
 
     head = timeline_for(exported, "head")
@@ -361,9 +362,9 @@ def test_torso_forward_bow_uses_3d_relative_rotation():
         bowed["world"][index][2] -= 0.42
 
     controls = calculate_pose_controls(bowed, reference_pose=neutral)
-    assert abs(controls["body"]["BEND_ANGLE_X"]) > 8.0
-    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 2.0
-    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
+    assert abs(controls["body"]["ROT_X"]) > 8.0
+    assert abs(controls["body"]["ROT_Y"]) < 2.0
+    assert abs(controls["body"]["ROT_Z"]) < 2.0
 
 
 def test_torso_turn_uses_independent_yaw_without_fake_bow():
@@ -371,9 +372,9 @@ def test_torso_turn_uses_independent_yaw_without_fake_bow():
     rotated = _rotate_pose_y(neutral, 38.0, (11, 12, 23, 24))
 
     controls = calculate_pose_controls(rotated, reference_pose=neutral)
-    assert abs(controls["body"]["BEND_ANGLE_Y"]) > 25.0
-    assert abs(controls["body"]["BEND_ANGLE_X"]) < 2.0
-    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
+    assert abs(controls["body"]["ROT_Y"]) > 25.0
+    assert abs(controls["body"]["ROT_X"]) < 2.0
+    assert abs(controls["body"]["ROT_Z"]) < 2.0
 
 
 def test_arms_stay_local_when_the_torso_turns():
@@ -389,11 +390,11 @@ def test_arms_stay_local_when_the_torso_turns():
             assert abs(controls[part][field] - original[part][field]) < 1.5
 
 
-def test_leg_motion_response_reduces_small_tracking_overreaction():
+def test_leg_motion_keeps_large_gestures_at_full_amplitude():
     assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == 0.0
-    assert 0.0 < _shape_motion_delta("left_leg", "ROT_Z", 20.0) < 20.0
-    assert 0.0 < _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) < 20.0
-    assert _shape_motion_delta("body", "BEND_ANGLE_X", 20.0) == 20.0
+    assert _shape_motion_delta("left_leg", "ROT_Z", 20.0) == 20.0
+    assert _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) == 20.0
+    assert _shape_motion_delta("body", "ROT_X", 20.0) == 20.0
 
 
 def test_robust_smoothing_rejects_single_frame_spike_but_keeps_motion():
@@ -477,6 +478,6 @@ def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
 
     controls = calculate_pose_controls(rotated, reference_pose=neutral)
 
-    assert controls["body"]["BEND_ANGLE_X"] == pytest.approx(100.0, abs=0.01)
-    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 0.01
-    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 0.01
+    assert controls["body"]["ROT_X"] == pytest.approx(100.0, abs=0.01)
+    assert abs(controls["body"]["ROT_Y"]) < 0.01
+    assert abs(controls["body"]["ROT_Z"]) < 0.01
