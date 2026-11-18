@@ -37,6 +37,42 @@ WINDOWS_DETECTOR_WEIGHTS = (
 )
 
 
+def _mmpose_metadata_directory(package_path: str | Path) -> Path | None:
+    """Return the metadata root in the exact order used by MMEngine 0.10.7."""
+    package_dir = Path(package_path).resolve()
+    candidates = (
+        package_dir.parent,       # Full MMPose repository layout
+        package_dir / ".mim",    # Installed MMPose wheel layout
+    )
+    for candidate in candidates:
+        if (
+            (candidate / "configs").is_dir()
+            and (candidate / "model-index.yml").is_file()
+        ):
+            return candidate
+    return None
+
+
+def _validate_mmpose_config_assets(mmpose_module) -> Path:
+    """Fail with actionable paths before MMEngine raises an opaque lookup error."""
+    package_dir = Path(next(iter(mmpose_module.__path__))).resolve()
+    metadata_dir = _mmpose_metadata_directory(package_dir)
+    if metadata_dir is None:
+        repo_configs = package_dir.parent / "configs"
+        repo_index = package_dir.parent / "model-index.yml"
+        mim_configs = package_dir / ".mim" / "configs"
+        mim_index = package_dir / ".mim" / "model-index.yml"
+        raise FileNotFoundError(
+            "Faltan los recursos de configuración de MMPose. "
+            "MMEngine necesita configs y model-index.yml juntos. "
+            f"Ruta del paquete: {package_dir}. "
+            f"Revisado: {repo_configs} y {repo_index}; "
+            f"{mim_configs} y {mim_index}. "
+            "Vuelve a descargar el paquete completo de la aplicación."
+        )
+    return metadata_dir
+
+
 def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
     """Build a known-compatible MMPose configuration for the current OS."""
     system = platform_name or platform.system()
@@ -66,6 +102,7 @@ def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
 def create_motionbert_inferencer():
     """Load the complete 2D + 3D inference stack before recording is enabled."""
     try:
+        import mmpose
         from mmpose.apis import MMPoseInferencer
     except Exception as exc:
         raise RuntimeError(
@@ -74,6 +111,8 @@ def create_motionbert_inferencer():
         ) from exc
 
     try:
+        metadata_dir = _validate_mmpose_config_assets(mmpose)
+        print(f"Configuraciones MMPose detectadas en: {metadata_dir}")
         return MMPoseInferencer(**_motionbert_inferencer_kwargs())
     except Exception as exc:
         raise RuntimeError(
