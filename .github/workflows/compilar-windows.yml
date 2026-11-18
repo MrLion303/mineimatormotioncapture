@@ -148,6 +148,11 @@ jobs:
         run: |
           set -euo pipefail
           rm -f mmpose-smoke-test.log
+          # Fuerza una descarga limpia de los pesos para reproducir el primer
+          # arranque del usuario. Así comprobamos también el sys.stderr del
+          # ejecutable --windowed cuando PyTorch muestra el progreso.
+          export TORCH_HOME="$PWD/.torch-windowed-smoke"
+          rm -rf "$TORCH_HOME"
           if ! ./dist/MineimatorMotionCapture/MineimatorMotionCapture.exe --smoke-test-mmpose; then
             if [ -f mmpose-smoke-test.log ]; then
               cat mmpose-smoke-test.log
