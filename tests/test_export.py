@@ -213,7 +213,7 @@ def test_torso_and_head_use_their_own_native_landmark_axes():
     controls = calculate_pose_controls(moved)
     assert any(
         abs(controls["body"][field] - original["body"][field]) > 1.0
-        for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z")
+        for field in ("ROT_X", "ROT_Y", "ROT_Z")
     )
     assert (
         abs(controls["head"]["ROT_X"] - original["head"]["ROT_X"]) > 1.0
