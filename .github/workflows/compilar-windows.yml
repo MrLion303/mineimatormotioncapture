@@ -18,7 +18,7 @@ jobs:
   compilar:
     name: Pruebas y compilación
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
@@ -138,16 +138,21 @@ jobs:
           PY
 
 
+      - name: Recuperar pesos de los modelos
+        uses: actions/cache@v4
+        with:
+          path: .torch-windowed-smoke/hub/checkpoints
+          key: motionbert-windows-torchhub-${{ hashFiles('requirements-mmpose.txt', 'requirements-dev.txt') }}
+
       - name: Probar RTMPose y MotionBERT desde el ejecutable empaquetado
         shell: bash
+        env:
+          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
         run: |
           set -euo pipefail
           rm -f mmpose-smoke-test.log
-          # Fuerza una descarga limpia de los pesos para reproducir el primer
-          # arranque del usuario. Así comprobamos también el sys.stderr del
-          # ejecutable --windowed cuando PyTorch muestra el progreso.
-          export TORCH_HOME="$PWD/.torch-windowed-smoke"
-          rm -rf "$TORCH_HOME"
+          # Reutiliza los pesos entre compilaciones. En la primera ejecución se
+          # descargan; GitHub Actions los guarda en caché si la prueba termina.
           if ! ./dist/MineimatorMotionCapture/MineimatorMotionCapture.exe --smoke-test-mmpose; then
             if [ -f mmpose-smoke-test.log ]; then
               cat mmpose-smoke-test.log
