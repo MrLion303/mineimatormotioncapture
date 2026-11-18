@@ -289,7 +289,7 @@ class MainWindow(QMainWindow):
         options_layout.addWidget(options_title)
 
         self.smooth_check = QCheckBox("Estabilizar sin perder gestos suaves")
-        self.smooth_check.setChecked(True)
+        self.smooth_check.setChecked(False)
         options_layout.addWidget(self.smooth_check)
 
         self.optimize_check = QCheckBox("Optimizar cantidad de keyframes")
