@@ -159,7 +159,7 @@ def _segment_rotation(start, end, frame) -> tuple[float, float]:
     return rot_x, rot_z
 
 
-def _bend_angle(start, joint, end) -> float:
+def _bend_angle(start, joint, end, frame=None) -> float:
     first = _subtract(start, joint)
     second = _subtract(end, joint)
     length_a = _length(first)
@@ -168,10 +168,30 @@ def _bend_angle(start, joint, end) -> float:
         return 0.0
     dot = _dot(first, second) / (length_a * length_b)
     inner_angle = degrees(acos(max(-1.0, min(1.0, dot))))
-    return max(0.0, min(150.0, 180.0 - inner_angle))
+    magnitude = max(0.0, min(150.0, 180.0 - inner_angle))
+    if frame is None or magnitude < _EPSILON:
+        return magnitude
+
+    # For the legs, preserve which side of the hip-to-ankle line the knee
+    # moved toward. In this frame, forward is +local Z and positive Mine-imator
+    # BEND_ANGLE_X folds the lower segment toward that forward direction.
+    first_local = _local_coordinates(first, frame)
+    second_local = _local_coordinates(second, frame)
+    bend_axis = _cross(first_local, second_local)
+    forward_bend = -bend_axis[0]
+    if abs(forward_bend) < _EPSILON:
+        return magnitude
+    return magnitude if forward_bend > 0.0 else -magnitude
 
 
-def _limb_controls(pose, start_index, joint_index, end_index, frame):
+def _limb_controls(
+    pose,
+    start_index,
+    joint_index,
+    end_index,
+    frame,
+    signed_bend: bool = False,
+):
     start = _point(pose, start_index)
     joint = _point(pose, joint_index)
     end = _point(pose, end_index)
@@ -182,7 +202,9 @@ def _limb_controls(pose, start_index, joint_index, end_index, frame):
         "ROT_X": rot_x,
         "ROT_Y": 0.0,
         "ROT_Z": rot_z,
-        "BEND_ANGLE_X": _bend_angle(start, joint, end),
+        "BEND_ANGLE_X": _bend_angle(
+            start, joint, end, frame if signed_bend else None
+        ),
     }
 
 
@@ -238,8 +260,12 @@ def calculate_pose_controls(
                 "ROT_Z": degrees(atan2(ear_local[1], max(abs(ear_local[0]), 1e-5))),
             }
 
-    left_leg = _limb_controls(pose, 23, 25, 27, reference_frame)
-    right_leg = _limb_controls(pose, 24, 26, 28, reference_frame)
+    left_leg = _limb_controls(
+        pose, 23, 25, 27, reference_frame, signed_bend=True
+    )
+    right_leg = _limb_controls(
+        pose, 24, 26, 28, reference_frame, signed_bend=True
+    )
     if left_leg is not None:
         controls["left_leg"] = left_leg
     if right_leg is not None:
