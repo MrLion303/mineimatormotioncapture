@@ -390,10 +390,10 @@ def test_arms_stay_local_when_the_torso_turns():
             assert abs(controls[part][field] - original[part][field]) < 1.5
 
 
-def test_leg_motion_keeps_large_gestures_at_full_amplitude():
+def test_leg_motion_no_longer_applies_amplitude_compression():
     assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == 0.0
-    assert _shape_motion_delta("left_leg", "ROT_Z", 20.0) == 20.0
-    assert _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) == 20.0
+    assert _shape_motion_delta("left_leg", "ROT_Z", 20.0) == 19.0
+    assert _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) == 18.5
     assert _shape_motion_delta("body", "ROT_X", 20.0) == 20.0
 
 
