@@ -78,10 +78,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # El paquete wheel de MMPose conserva sus configuraciones y metadatos
-          # de alias dentro de mmpose/.mim. Se incluye la estructura completa
-          # en su ubicación oficial. No se copia configs a la raíz: MMEngine
-          # daría prioridad a esa carpeta y buscaría model-index.yml allí.
+          # MMEngine 0.10.7 busca primero configs y model-index.yml
+          # junto a la carpeta del paquete mmpose (PyInstaller: _internal).
+          # Se empaquetan juntos en esa raíz para evitar depender de que
+          # PyInstaller conserve el directorio oculto .mim del wheel.
           MMPOSE_MIM="$(python -c "from pathlib import Path; import mmpose; print(Path(mmpose.__file__).resolve().parent / '.mim')")"
           test -d "$MMPOSE_MIM/configs"
           test -f "$MMPOSE_MIM/model-index.yml"
@@ -98,7 +98,9 @@ jobs:
             --collect-all mmdet \
             --collect-all mmpose \
             --collect-all xtcocotools \
-            --add-data "$MMPOSE_MIM;mmpose/.mim" \
+            --add-data "$MMPOSE_MIM/configs;configs" \
+            --add-data "$MMPOSE_MIM/model-index.yml;." \
+            --add-data "$MMPOSE_MIM/dataset-index.yml;." \
             --add-data "mocap_app/assets/faster_rcnn_r50_fpn_coco.py;mocap_app/assets" \
             main.py
 
@@ -113,26 +115,31 @@ jobs:
           detector_configs = list(root.rglob("faster_rcnn_r50_fpn_coco.py"))
           assert detector_configs, "Falta el detector Windows dentro de la aplicación"
 
-          mim_dirs = [
-              path for path in root.rglob(".mim")
-              if (path / "configs").is_dir()
-              and (path / "model-index.yml").is_file()
-          ]
-          assert mim_dirs, "Faltan los metadatos .mim de MMPose dentro de la aplicación"
+          # PyInstaller 6 stores the onedir runtime under _internal.
+          internal = root / "_internal"
+          assert internal.is_dir(), "Falta la carpeta _internal del ejecutable"
 
-          mmpose_mim_dirs = [
-              path for path in mim_dirs
-              if path.parent.name == "mmpose"
-              and (path / "configs" / "body_3d_keypoint" / "motionbert" / "h36m"
-                   / "motionbert_h36m.yml").is_file()
-          ]
-          assert mmpose_mim_dirs, (
-              "Falta mmpose/.mim con los metadatos y la configuración de MotionBERT"
+          model_index = internal / "model-index.yml"
+          configs = internal / "configs"
+          assert model_index.is_file(), (
+              "Falta _internal/model-index.yml; MMEngine no podrá resolver el alias human3d"
+          )
+          assert (configs / "body_3d_keypoint" / "motionbert" / "h36m"
+                  / "motionbert_h36m.yml").is_file(), (
+              "Falta el metafile de MotionBERT en _internal/configs"
+          )
+          assert (configs / "body_2d_keypoint" / "rtmpose" / "coco"
+                  / "rtmpose_coco.yml").is_file(), (
+              "Falta el metafile de RTMPose en _internal/configs"
+          )
+          assert (configs / "body_3d_keypoint" / "motionbert" / "h36m"
+                  / "motionbert_dstformer-ft-243frm_8xb32-120e_h36m.py").is_file(), (
+              "Falta la configuración Python de MotionBERT en _internal/configs"
           )
 
           print("Detector incluido:", detector_configs[0])
-          print("Metadatos MMPose incluidos:", mmpose_mim_dirs[0] / "model-index.yml")
-          print("Configuraciones MMPose incluidas:", mmpose_mim_dirs[0] / "configs")
+          print("Metadatos MMPose incluidos:", model_index)
+          print("Configuraciones MMPose incluidas:", configs)
           PY
 
 
