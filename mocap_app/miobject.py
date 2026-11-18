@@ -10,7 +10,7 @@ from .retarget import calculate_pose_controls
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 PART_FIELDS = {
-    "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
+    "body": ("ROT_X", "ROT_Y", "ROT_Z"),
     "head": ("ROT_X", "ROT_Z"),
     "left_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
@@ -22,9 +22,9 @@ KEYFRAME_ANGLE_THRESHOLD = 0.8
 MAX_KEYFRAME_INTERVAL_SECONDS = 0.15
 
 LEG_MOTION_GAINS = {
-    "ROT_X": 0.72,
-    "ROT_Z": 0.72,
-    "BEND_ANGLE_X": 0.68,
+    "ROT_X": 1.0,
+    "ROT_Z": 1.0,
+    "BEND_ANGLE_X": 1.0,
 }
 LEG_MOTION_DEADZONES = {
     "ROT_X": 1.0,
@@ -228,7 +228,7 @@ def export_miobject(
     fps: int = 30,
     duration_seconds: float | None = None,
     optimize_keyframes: bool = True,
-    smooth_motion: bool = True,
+    smooth_motion: bool = False,
 ) -> dict[str, Any]:
     if not 12 <= int(fps) <= 60:
         raise MiobjectError("Los FPS de salida deben estar entre 12 y 60.")
