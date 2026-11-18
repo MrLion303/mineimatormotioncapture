@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QGuiApplication, QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -678,6 +678,33 @@ class MainWindow(QMainWindow):
     def _set_status(self, message: str) -> None:
         self.status_label.setText(message)
 
+    def _show_error_dialog(
+        self,
+        title: str,
+        message: str,
+        icon: QMessageBox.Icon = QMessageBox.Icon.Critical,
+    ) -> None:
+        """Show an error with an action to copy its complete, untruncated text."""
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(title)
+        dialog.setIcon(icon)
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        dialog.setText(message)
+        dialog.setMinimumWidth(520)
+
+        copy_button = dialog.addButton(
+            "Copiar error completo",
+            QMessageBox.ButtonRole.ActionRole,
+        )
+        copy_button.clicked.connect(
+            lambda: QGuiApplication.clipboard().setText(message)
+        )
+        dialog.addButton(QMessageBox.StandardButton.Ok)
+        dialog.exec()
+
     def _refresh_camera_list(self) -> None:
         if self.camera_worker is not None:
             self._set_status("Desconecta la cámara antes de actualizar la lista.")
@@ -806,8 +833,7 @@ class MainWindow(QMainWindow):
             # Do not allow a partially reconstructed take to be exported.
             self.samples.clear()
             return
-        QMessageBox.critical(
-            self,
+        self._show_error_dialog(
             "No se pudo iniciar la captura",
             message,
         )
@@ -1044,8 +1070,7 @@ class MainWindow(QMainWindow):
             self.samples.clear()
             self.time_label.setText("Reconstrucción fallida")
             self._set_status(capture_error)
-            QMessageBox.critical(
-                self,
+            self._show_error_dialog(
                 "Falló la reconstrucción 3D",
                 capture_error,
             )
@@ -1087,7 +1112,11 @@ class MainWindow(QMainWindow):
         try:
             load_template(filename)
         except MiobjectError as exc:
-            QMessageBox.warning(self, "Plantilla no compatible", str(exc))
+            self._show_error_dialog(
+                "Plantilla no compatible",
+                str(exc),
+                QMessageBox.Icon.Warning,
+            )
             return
 
         self.template_path = Path(filename)
@@ -1128,7 +1157,7 @@ class MainWindow(QMainWindow):
                 smooth_motion=self.smooth_check.isChecked(),
             )
         except (MiobjectError, OSError, ValueError) as exc:
-            QMessageBox.critical(self, "No se pudo exportar", str(exc))
+            self._show_error_dialog("No se pudo exportar", str(exc))
             return
 
         counts = ", ".join(
