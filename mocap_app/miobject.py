@@ -5,7 +5,7 @@ from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Iterable
 
-from .retarget import calculate_pose_controls
+from .retarget import WORLD_REFERENCE_FRAME, _torso_frame, calculate_pose_controls
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
@@ -56,6 +56,12 @@ def load_template(path: str | Path) -> dict[str, Any]:
             data = json.load(source)
     except (OSError, json.JSONDecodeError) as exc:
         raise MiobjectError(f"No se pudo leer el archivo .miobject: {exc}") from exc
+    # A Mine-imator project is also a valid source rig. Strip editor-only
+    # project/render/background settings before emitting a .miobject asset.
+    if isinstance(data, dict):
+        data = dict(data)
+        for editor_section in ("project", "render", "background"):
+            data.pop(editor_section, None)
     validate_template(data)
     return data
 
@@ -259,8 +265,16 @@ def export_miobject(
         )
     static_part_fields = _template_static_part_fields(data)
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
+    previous_frame = _torso_frame(reference_pose) or WORLD_REFERENCE_FRAME
     for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose, reference_pose=reference_pose)
+        controls = calculate_pose_controls(
+            pose,
+            reference_pose=reference_pose,
+            previous_frame=previous_frame,
+        )
+        current_frame = _torso_frame(pose, fallback_frame=previous_frame)
+        if current_frame is not None:
+            previous_frame = current_frame
         if controls:
             converted.append((max(0.0, float(timestamp)), controls))
     if not converted:
