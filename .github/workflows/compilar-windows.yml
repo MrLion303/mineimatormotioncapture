@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: motionbert-build-${{ github.ref }}
@@ -189,6 +189,10 @@ jobs:
           if ($videoFile.Length -ne 14444160) {
             throw "El tamaño del video descargado no coincide con el archivo esperado: $($videoFile.Length) bytes."
           }
+          $sha256 = (Get-FileHash -Algorithm SHA256 $videoPath).Hash.ToLowerInvariant()
+          if ($sha256 -ne '42f81e8d72c8df0dfb87ab52f73e1fc19f3ee33a6bfe1913d4b80b69d39514ec') {
+            throw "El SHA256 del video no coincide con el fixture autorizado: $sha256."
+          }
           $signature = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($videoPath), 0, 12)
           if (!$signature.StartsWith("RIFF") -or $signature.Substring(8, 4) -ne "AVI ") {
             throw "El archivo descargado no tiene una cabecera AVI válida."
@@ -197,7 +201,7 @@ jobs:
           # Ejecuta el mismo flujo CLI con Python en el runner. La aplicación
           # empaquetada ya tiene su propia prueba de inicialización arriba; así
           # la captura no depende de la redirección stdout/stderr de --windowed.
-          python main.py --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
+          python main.py --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8 --smooth-motion
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             if (Test-Path $runtimeLog) {
@@ -224,6 +228,7 @@ jobs:
           path: |
             artifacts/Steve_29532_animado.miobject
             artifacts/Steve_29532_animado.diagnostico.json
+            artifacts/Steve_29532_animado.poses.json
           if-no-files-found: error
           retention-days: 14
 
@@ -234,3 +239,19 @@ jobs:
           path: dist/MineimatorMotionCapture/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Guardar el video real como fixture de regresión
+        if: github.ref == 'refs/heads/feature/rtmpose-motionbert' && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $fixture = "tests/fixtures/Steve_29532/29532_normalizado_30fps.avi"
+          if (!(Test-Path $fixture)) {
+            Copy-Item "artifacts/29532_prueba_normalizada.avi" $fixture
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add $fixture
+            git commit -m "Añade video real de regresión para Motion Capture"
+            git push origin "HEAD:$env:GITHUB_REF_NAME"
+          } else {
+            Write-Host "El video real ya está guardado en el repositorio."
+          }
