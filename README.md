@@ -12,7 +12,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la flexión del codo y la rodilla se calcula por separado.
 - Se reduce la respuesta de las piernas y se aplica una zona muerta pequeña para evitar que la vibración del tracking se convierta en pasos exagerados.
 - El suavizado combina mediana temporal y un filtro adaptativo tipo One Euro: amortigua saltos aislados y conserva movimientos rápidos.
-- Cada articulación se calibra con su primera muestra válida. La postura de inicio pasa a ser el reposo de la captura, evitando exportar offsets absolutos de cámara como giros cercanos a 180°.
+- El torso usa su primer marco 3D como referencia; brazos y piernas conservan su pose local desde el primer fotograma, incluso si el video comienza a mitad de un gesto. La cabeza se calibra por separado para compensar el offset anatómico de nariz y orejas.
 - La pista `char` se congela en su primer transform. No se generan desplazamientos ni rotaciones globales.
 - La plantilla conserva campos estáticos del rig, como `POS_Z` y `TEXTURE_OBJ`, además de accesorios.
 - Durante REC se conserva la resolución solicitada de 640×480; solo se reducen imágenes de cámaras que entreguen una resolución superior.

@@ -265,20 +265,33 @@ def export_miobject(
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
 
-    # The torso already uses a fixed first-frame orientation reference.
-    # Limb and head controls are expressed relative to their model rest axes:
-    # subtracting their first captured pose here erased raised arms, bent knees,
-    # and head turns whenever a video began mid-dance. Preserve those absolute
-    # local poses and only apply the small lower-body response shaping.
+    # Torso orientation is already measured relative to the first complete
+    # torso frame. Head landmarks include a fixed anatomical nose-to-ear offset,
+    # so keep the first reliable head orientation as its neutral baseline.
+    # Arms and legs, however, are measured against the model's rest axes: their
+    # first-frame pose is part of the dance and must not be subtracted away.
+    head_reference: dict[str, float] = {}
+    for _, controls in converted:
+        if "head" in controls:
+            head_reference = {
+                field: float(value)
+                for field, value in controls["head"].items()
+            }
+            break
+
     shaped: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, controls in converted:
-        shaped_controls = {
-            part: {
-                field: _shape_motion_delta(part, field, value)
-                for field, value in fields.items()
-            }
-            for part, fields in controls.items()
-        }
+        shaped_controls: dict[str, dict[str, float]] = {}
+        for part, fields in controls.items():
+            shaped_fields = {}
+            for field, value in fields.items():
+                adjusted = (
+                    _angle_difference(value, head_reference.get(field, value))
+                    if part == "head"
+                    else float(value)
+                )
+                shaped_fields[field] = _shape_motion_delta(part, field, adjusted)
+            shaped_controls[part] = shaped_fields
         shaped.append((timestamp, shaped_controls))
     converted = shaped
     source_times = [item[0] for item in converted]

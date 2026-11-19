@@ -21,9 +21,9 @@ El torso usa los canales nativos `BEND_ANGLE_X/Y/Z` del rig humano de Mine-imato
 
 ## Calibración de postura inicial
 
-Cada pista y canal se calibra con su primera muestra válida. Esa medición se resta de las muestras siguientes usando la diferencia angular más corta, evitando saltos de 360°. Así, los offsets de la cámara (por ejemplo, valores iniciales cercanos a 170°) no se convierten en una rotación enorme del personaje. Una articulación que aparece más tarde se calibra al hacerse visible por primera vez.
+El torso toma como referencia su primer marco 3D completo para medir el movimiento de giro e inclinación sin animar la raíz. La cabeza conserva su primera orientación fiable como línea base porque la distancia anatómica entre nariz y orejas no representa una inclinación del cuello. Los brazos y las piernas no se ponen a cero en el primer fotograma: sus ángulos se calculan respecto a los ejes de reposo del rig, por lo que una grabación que empieza con un brazo levantado o una rodilla flexionada conserva esa pose desde el fotograma cero.
 
-Al comenzar REC, la persona debe permanecer un instante en postura neutra y después ejecutar el movimiento. Esta referencia inicial es esencial: la aplicación no puede inferir cuál sería la postura de reposo si la grabación comienza mientras ya se está realizando un gesto.
+Para estabilizar la orientación del torso y la cabeza, conviene comenzar REC con el cuerpo erguido y la cabeza mirando al frente durante un instante. No es necesario bajar los brazos ni estirar las piernas si el movimiento ya comenzó: esa postura inicial se conserva en la animación.
 
 ## Raíz y posición de escena
 
