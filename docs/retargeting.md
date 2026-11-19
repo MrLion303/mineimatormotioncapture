@@ -10,14 +10,14 @@ La raíz `char` permanece fija. No se generan traslaciones, giros globales ni de
 
 | Pista de Mine-imator | Landmarks | Canales animados |
 |---|---|---|
-| `body` | Eje entre hombros y caderas, orientación de hombros | `BEND_ANGLE_X`, `BEND_ANGLE_Y`, `BEND_ANGLE_Z` |
+| `body` | Eje entre hombros y caderas, orientación de hombros | `ROT_X`, `ROT_Y`, `ROT_Z` |
 | `head` | Nariz y eje entre orejas | `ROT_X`, `ROT_Z` |
 | `left_arm` | Hombro 11, codo 13, muñeca 15 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 | `right_arm` | Hombro 12, codo 14, muñeca 16 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 | `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 | `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
 
-El torso se anima con los tres canales `BEND_ANGLE`, no con `ROT_X/Y/Z`. La cabeza utiliza X y Z. Los brazos se miden en el marco local del torso actual, de modo que el giro del torso no se duplica como giro del brazo. Las piernas se miden respecto al marco de referencia fijo porque son hijas de `char`, no del torso. Brazos y piernas usan orientación y flexión por separado: el vector del segmento superior produce las rotaciones y el ángulo de tres puntos produce la flexión del codo o la rodilla. No se inventa torsión axial, por lo que `ROT_Y` de las extremidades permanece en cero.
+El torso se anima como una pieza rígida con `ROT_X/Y/Z`. En particular, el giro horizontal del torso se exporta en `ROT_Y`; no se escribe en `BEND_ANGLE_Y`, porque ese canal deforma la malla en lugar de girar el torso completo. Así la cabeza y los brazos, que son hijos del torso en la plantilla humana, heredan el giro de forma natural. La cabeza utiliza X y Z relativos al marco del torso. Los brazos se miden en el marco local del torso actual, de modo que el giro del torso no se duplica como giro del brazo. Las piernas se miden respecto al marco de referencia fijo porque son hijas de `char`, no del torso. Brazos y piernas usan orientación y flexión por separado: el vector del segmento superior produce las rotaciones y el ángulo de tres puntos produce la flexión del codo o la rodilla. No se inventa torsión axial, por lo que `ROT_Y` de las extremidades permanece en cero.
 
 ## Calibración de postura inicial
 

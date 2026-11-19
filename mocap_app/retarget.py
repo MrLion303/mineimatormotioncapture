@@ -193,7 +193,9 @@ def calculate_pose_controls(
     """Convert MediaPipe landmarks to native Mine-imator human channels.
 
     Torso orientation is calculated as a complete 3D frame and compared with
-    the first reliable frame. Arms are expressed in the *current* torso frame,
+    the first reliable frame. It is exported as rigid body-part rotation
+    (ROT_X/Y/Z), not mesh bending (BEND_ANGLE), so yaw turns the torso instead
+    of deforming it sideways. Arms are expressed in the *current* torso frame,
     so a torso turn does not get added a second time to the arms. Legs use the
     fixed reference frame because their Mine-imator parent is the character
     root, which this application intentionally keeps stationary.
@@ -210,11 +212,11 @@ def calculate_pose_controls(
     controls: dict[str, dict[str, float]] = {}
 
     if current_frame is not None:
-        bend_x, bend_y, bend_z = _relative_euler(reference_frame, current_frame)
+        rot_x, rot_y, rot_z = _relative_euler(reference_frame, current_frame)
         controls["body"] = {
-            "BEND_ANGLE_X": bend_x,
-            "BEND_ANGLE_Y": bend_y,
-            "BEND_ANGLE_Z": bend_z,
+            "ROT_X": rot_x,
+            "ROT_Y": rot_y,
+            "ROT_Z": rot_z,
         }
 
         left_arm = _limb_controls(pose, 11, 13, 15, current_frame)
