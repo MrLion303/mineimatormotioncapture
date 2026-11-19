@@ -31,6 +31,21 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m pytest -q
 
+      - name: Validar importación de vídeo con MediaPipe Heavy
+        run: >
+          python -m mocap_app.video_test
+          --video tests/fixtures/Steve_29532/29532_normalizado_30fps.avi
+          --template tests/fixtures/Steve_29532/Steve.miobject
+          --output artifacts/regression/Steve_29532_animado.miobject
+
+      - name: Publicar resultado de la prueba de movimiento
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotionCapture-Regression-Animation
+          path: artifacts/regression/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Comprobar sintaxis
         run: python -m compileall -q main.py mocap_app tests
 
