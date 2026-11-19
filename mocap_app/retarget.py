@@ -63,14 +63,14 @@ def _unit(vector):
     return tuple(component / magnitude for component in vector)
 
 
-def _torso_frame(pose: dict[str, Any]):
-    """Build a stable orthonormal torso frame from shoulder and hip landmarks.
+def _torso_frame(pose: dict[str, Any], fallback_frame=None):
+    """Build an orthonormal torso frame, preserving heading through width collapse.
 
-    Shoulder width is preferred because it captures torso twist. If that axis
-    becomes almost parallel to the torso's up axis, its projected width is
-    unreliable; in that case the pelvis width is used as a geometric fallback.
-    Degenerate torso height or width is rejected instead of producing a frame
-    whose axes can jump dramatically from one video frame to the next.
+    Shoulder width is preferred because it captures torso twist. Pelvis width
+    is the geometric fallback. When both width estimates become degenerate
+    (common in profile views), the previous reliable right axis is projected
+    onto the current torso plane. This preserves heading while still following
+    the measured torso lean and tilt.
     """
     left_shoulder = _point(pose, 11)
     right_shoulder = _point(pose, 12)
@@ -96,19 +96,29 @@ def _torso_frame(pose: dict[str, Any]):
         return tuple(axis[i] - along_up * up[i] for i in range(3))
 
     shoulder_width = project_width(_subtract(right_shoulder, left_shoulder))
+    hip_width = project_width(_subtract(right_hip, left_hip))
     if _length(shoulder_width) >= _MIN_TORSO_WIDTH:
         right_hint = shoulder_width
-    else:
-        # A nearly vertical shoulder axis is a poor estimate of torso width.
-        # The pelvis provides a more stable left/right reference in that frame.
-        hip_width = project_width(_subtract(right_hip, left_hip))
-        if _length(hip_width) < _MIN_TORSO_WIDTH:
-            return None
+    elif _length(hip_width) >= _MIN_TORSO_WIDTH:
         right_hint = hip_width
+    elif fallback_frame is not None:
+        # In a side-on view both measured width axes may collapse. Reuse the
+        # previous heading, but reproject it against this frame's measured up.
+        right_hint = project_width(fallback_frame[0])
+        if _length(right_hint) < _EPSILON:
+            previous_forward = project_width(fallback_frame[2])
+            right_hint = _cross(up, previous_forward)
+        if _length(right_hint) < _EPSILON:
+            return None
+    else:
+        return None
 
     right = _unit(right_hint)
     if right is None:
         return None
+    # Avoid a numerical 180-degree flip when a noisy width vector changes sign.
+    if fallback_frame is not None and _dot(right, fallback_frame[0]) < 0.0:
+        right = tuple(-component for component in right)
     forward = _unit(_cross(right, up))
     if forward is None:
         return None
@@ -211,6 +221,7 @@ def _limb_controls(
 def calculate_pose_controls(
     pose: dict[str, Any],
     reference_pose: dict[str, Any] | None = None,
+    previous_frame=None,
 ) -> dict[str, dict[str, float]]:
     """Convert 3D body landmarks to native Mine-imator human channels.
 
@@ -220,14 +231,21 @@ def calculate_pose_controls(
     fixed reference frame because their Mine-imator parent is the character
     root, which this application intentionally keeps stationary.
     """
-    current_frame = _torso_frame(pose)
     reference_frame = (
         _torso_frame(reference_pose)
         if reference_pose is not None
         else WORLD_REFERENCE_FRAME
     )
     if reference_frame is None:
-        reference_frame = current_frame or WORLD_REFERENCE_FRAME
+        reference_frame = previous_frame or WORLD_REFERENCE_FRAME
+
+    # The explicit previous frame is authoritative during a sequence. For
+    # isolated conversions with a calibration pose, that pose supplies the
+    # heading fallback. Never invent a temporal fallback for a missing pose.
+    fallback_frame = previous_frame
+    if fallback_frame is None and reference_pose is not None:
+        fallback_frame = reference_frame
+    current_frame = _torso_frame(pose, fallback_frame=fallback_frame)
 
     controls: dict[str, dict[str, float]] = {}
 
