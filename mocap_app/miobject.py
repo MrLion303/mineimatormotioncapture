@@ -265,30 +265,22 @@ def export_miobject(
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
 
-    # Calibrate every part/channel independently so a joint that becomes
-    # visible later also starts from its own first reliable observation.
-    reference: dict[str, dict[str, float]] = {}
-    for _, controls in converted:
-        for part, fields in controls.items():
-            part_reference = reference.setdefault(part, {})
-            for field, value in fields.items():
-                part_reference.setdefault(field, float(value))
-
-    calibrated: list[tuple[float, dict[str, dict[str, float]]]] = []
+    # The torso already uses a fixed first-frame orientation reference.
+    # Limb and head controls are expressed relative to their model rest axes:
+    # subtracting their first captured pose here erased raised arms, bent knees,
+    # and head turns whenever a video began mid-dance. Preserve those absolute
+    # local poses and only apply the small lower-body response shaping.
+    shaped: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, controls in converted:
-        relative_controls: dict[str, dict[str, float]] = {}
-        for part, fields in controls.items():
-            part_reference = reference.get(part, {})
-            relative_controls[part] = {
-                field: _shape_motion_delta(
-                    part,
-                    field,
-                    _angle_difference(value, part_reference.get(field, value)),
-                )
+        shaped_controls = {
+            part: {
+                field: _shape_motion_delta(part, field, value)
                 for field, value in fields.items()
             }
-        calibrated.append((timestamp, relative_controls))
-    converted = calibrated
+            for part, fields in controls.items()
+        }
+        shaped.append((timestamp, shaped_controls))
+    converted = shaped
     source_times = [item[0] for item in converted]
 
     if duration_seconds is None:

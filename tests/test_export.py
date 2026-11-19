@@ -148,6 +148,53 @@ def test_supplied_working_torso_turn_channel_reference():
     assert reference["children"] == ["head", "left_arm", "right_arm"]
 
 
+
+def test_export_preserves_non_neutral_first_frame_pose(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+
+    first_pose = standing_pose()
+    # Start with the left arm raised and bent, as in the supplied Rickroll.
+    first_pose["world"][13] = [-0.03, -1.55, 0.0, 1.0, 1.0]
+    first_pose["world"][15] = [0.28, -1.62, -0.02, 1.0, 1.0]
+    # Start with the right knee flexed instead of treating the stance as rest.
+    first_pose["world"][26] = [0.34, 0.68, -0.12, 1.0, 1.0]
+    first_pose["world"][28] = [0.52, 1.25, -0.20, 1.0, 1.0]
+
+    expected = calculate_pose_controls(first_pose, reference_pose=first_pose)
+    assert abs(expected["left_arm"]["ROT_Z"]) > 10.0
+    assert expected["left_arm"]["BEND_ANGLE_X"] > 10.0
+    assert abs(expected["right_leg"]["ROT_Z"]) > 1.0
+
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, first_pose), (0.5, first_pose)],
+        fps=30,
+        duration_seconds=0.5,
+        optimize_keyframes=False,
+        smooth_motion=False,
+    )
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    left_arm = timeline_for(exported, "left_arm")["keyframes"]["0"]
+    right_leg = timeline_for(exported, "right_leg")["keyframes"]["0"]
+
+    assert left_arm["ROT_Z"] == pytest.approx(expected["left_arm"]["ROT_Z"], abs=0.01)
+    assert left_arm["BEND_ANGLE_X"] == pytest.approx(
+        expected["left_arm"]["BEND_ANGLE_X"], abs=0.01
+    )
+    expected_leg = _shape_motion_delta(
+        "right_leg", "ROT_Z", expected["right_leg"]["ROT_Z"]
+    )
+    assert right_leg["ROT_Z"] == pytest.approx(expected_leg, abs=0.01)
+    body = timeline_for(exported, "body")["keyframes"]["0"]
+    assert all(abs(body[field]) < 0.001 for field in (
+        "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
+    ))
+
+
 def test_direct_retarget_uses_the_native_channels_from_the_mineimator_example():
     controls = calculate_pose_controls(standing_pose())
 

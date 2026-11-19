@@ -8,6 +8,7 @@ import cv2
 from PySide6.QtCore import QCoreApplication
 
 from .miobject import export_miobject
+from .retarget import calculate_pose_controls
 from .video import VideoWorker
 
 
@@ -88,9 +89,52 @@ def run_regression(video_path: Path, template_path: Path, output_path: Path) -> 
         if values
     }
 
+    reference_pose = next(
+        (
+            pose for _, pose in samples
+            if "body" in calculate_pose_controls(pose)
+        ),
+        samples[0][1],
+    )
+    pose_frames = []
+    channel_values: dict[str, dict[str, list[float]]] = {}
+    for timestamp, pose in samples:
+        controls = calculate_pose_controls(pose, reference_pose=reference_pose)
+        pose_frames.append({
+            "timestamp": round(float(timestamp), 6),
+            "world": pose.get("world", []),
+            "image": pose.get("image", []),
+            "controls": controls,
+        })
+        for part, fields in controls.items():
+            part_values = channel_values.setdefault(part, {})
+            for field, value in fields.items():
+                part_values.setdefault(field, []).append(float(value))
+
+    channel_ranges = {
+        part: {
+            field: {"min": min(values), "max": max(values)}
+            for field, values in fields.items() if values
+        }
+        for part, fields in channel_values.items()
+    }
+    poses_path = output_path.with_suffix(".poses.json")
+    poses_path.parent.mkdir(parents=True, exist_ok=True)
+    poses_path.write_text(
+        json.dumps({
+            "video": str(video_path),
+            "source_fps": source_fps,
+            "frames": pose_frames,
+        }, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
     diagnostic = {
         "video": str(video_path),
         "template": str(template_path),
+        "pose_diagnostics": poses_path.name,
+        "first_frame_controls": pose_frames[0]["controls"],
+        "raw_channel_ranges": channel_ranges,
         "torso_yaw_channel": "BEND_ANGLE_Z",
         "body_channel_ranges": body_ranges,
         "source_frame_count": frame_count,
