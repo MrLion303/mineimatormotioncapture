@@ -959,6 +959,8 @@ class MainWindow(QMainWindow):
         if not self.camera_ready or self.state != "idle":
             return
         self.samples.clear()
+        self._capture_error = None
+        self._processing_source = "camera"
         self.record_limit = float(self.duration_spin.value())
         self.countdown_value = 3
         self.state = "countdown"
@@ -1074,7 +1076,14 @@ class MainWindow(QMainWindow):
             self.time_label.setText("Sin poses válidas")
         else:
             self.progress_caption.setText("PROCESAMIENTO COMPLETADO")
-            self.progress.setValue(1000)
+            if self._processing_source == "video":
+                self.progress.setValue(1000)
+            else:
+                ratio = (
+                    self.recorded_duration / self.record_limit
+                    if self.record_limit > 0.0 else 0.0
+                )
+                self.progress.setValue(int(max(0.0, min(1.0, ratio)) * 1000))
             self.time_label.setText(
                 f"{len(self.samples)} muestras · Listo para exportar"
             )
