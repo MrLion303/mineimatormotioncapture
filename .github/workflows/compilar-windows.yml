@@ -175,7 +175,24 @@ jobs:
           $runtimeLog = Join-Path $env:LOCALAPPDATA "NegativeStudios/MineimatorMotionCapture/logs/runtime.log"
           Remove-Item $runtimeLog -Force -ErrorAction SilentlyContinue
 
-          & $exe --test-video "tests/fixtures/Steve_29532/29532_regression_30fps.mp4" --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
+          # Descarga el video original compartido por el usuario desde Google Drive.
+          $videoPath = "artifacts/29532_prueba_normalizada.avi"
+          $videoUrl = "https://drive.google.com/uc?export=download&id=11U3yterKrCsQQ-AqrCdmTUBOMHRU4txm"
+          Write-Host "Descargando el video de prueba desde Google Drive..."
+          curl.exe --fail --location --silent --show-error --retry 3 --retry-delay 2 --output $videoPath $videoUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "No se pudo descargar el video original desde Google Drive."
+          }
+          $videoFile = Get-Item $videoPath
+          if ($videoFile.Length -ne 14444160) {
+            throw "El tamaño del video descargado no coincide con el archivo esperado: $($videoFile.Length) bytes."
+          }
+          $signature = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($videoPath), 0, 12)
+          if (!$signature.StartsWith("RIFF") -or $signature.Substring(8, 4) -ne "AVI ") {
+            throw "El archivo descargado no tiene una cabecera AVI válida."
+          }
+
+          & $exe --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             if (Test-Path $runtimeLog) {
