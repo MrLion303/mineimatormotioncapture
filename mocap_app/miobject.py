@@ -10,7 +10,7 @@ from .retarget import calculate_pose_controls
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 PART_FIELDS = {
-    "body": ("ROT_X", "ROT_Y", "ROT_Z"),
+    "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
     "head": ("ROT_X", "ROT_Z"),
     "left_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),

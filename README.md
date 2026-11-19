@@ -6,9 +6,9 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 
 - Se fija el modelo MediaPipe Pose Landmarker Heavy, sin selector de calidad; se utilizan parámetros de confianza más estrictos.
 - La vista previa y la exportación usan 30 FPS recomendados, sin controles de FPS.
-- El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; sus rotaciones se miden respecto a la primera postura fiable para separar inclinación, giro y reverencia.
+- El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; el giro horizontal se exporta en el canal nativo `BEND_ANGLE_Z`, conforme al rig de referencia de Mine-imator.
 - Los brazos se expresan en el marco local actual del torso, evitando duplicar el giro del torso en los brazos.
-- La cabeza usa `ROT_X` y `ROT_Z`, y el torso conserva los tres canales nativos `BEND_ANGLE_X/Y/Z`.
+- La cabeza usa `ROT_X` y `ROT_Z`; el torso usa `BEND_ANGLE_X/Y/Z` con el yaw asignado a `BEND_ANGLE_Z`.
 - Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la flexión del codo y la rodilla se calcula por separado.
 - Se reduce la respuesta de las piernas y se aplica una zona muerta pequeña para evitar que la vibración del tracking se convierta en pasos exagerados.
 - El suavizado combina mediana temporal y un filtro adaptativo tipo One Euro: amortigua saltos aislados y conserva movimientos rápidos.

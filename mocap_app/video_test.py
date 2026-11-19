@@ -67,9 +67,32 @@ def run_regression(video_path: Path, template_path: Path, output_path: Path) -> 
         smooth_motion=True,
     )
 
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    body_timeline = next(
+        timeline for timeline in exported["timelines"]
+        if timeline.get("type") == "bodypart"
+        and timeline.get("model_part_name") == "body"
+    )
+    body_keyframes = body_timeline.get("keyframes", {})
+    body_fields = {
+        field: [
+            float(values[field])
+            for values in body_keyframes.values()
+            if field in values
+        ]
+        for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z")
+    }
+    body_ranges = {
+        field: {"min": min(values), "max": max(values)}
+        for field, values in body_fields.items()
+        if values
+    }
+
     diagnostic = {
         "video": str(video_path),
         "template": str(template_path),
+        "torso_yaw_channel": "BEND_ANGLE_Z",
+        "body_channel_ranges": body_ranges,
         "source_frame_count": frame_count,
         "source_fps": source_fps,
         "source_duration_seconds": (
