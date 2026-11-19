@@ -194,7 +194,10 @@ jobs:
             throw "El archivo descargado no tiene una cabecera AVI válida."
           }
 
-          & $exe --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
+          # Ejecuta el mismo flujo CLI con Python en el runner. La aplicación
+          # empaquetada ya tiene su propia prueba de inicialización arriba; así
+          # la captura no depende de la redirección stdout/stderr de --windowed.
+          python main.py --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             if (Test-Path $runtimeLog) {
