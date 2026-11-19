@@ -1,0 +1,25 @@
+{
+  "format": 35,
+  "source_file": "prueba de giro de torso.miobject",
+  "body": {
+    "part": "body",
+    "parent": "char",
+    "keyframes": {
+      "0": {},
+      "15": {
+        "BEND_ANGLE_Z": 61.41356
+      },
+      "30": {},
+      "45": {
+        "BEND_ANGLE_Z": -47.32366
+      },
+      "60": {}
+    }
+  },
+  "children": [
+    "head",
+    "left_arm",
+    "right_arm"
+  ],
+  "interpretation": "El archivo de referencia anima el giro horizontal en la pista body mediante BEND_ANGLE_Z. La cabeza y ambos brazos son hijos de body."
+}

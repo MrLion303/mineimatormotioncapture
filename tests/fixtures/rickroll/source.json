@@ -1,0 +1,13 @@
+{
+  "filename": "Download.mp4",
+  "sha256": "c3f36408d04ff9de5c254b4ae787f95b52a70383555a1580defd30b7dafe7622",
+  "bytes": 9464769,
+  "width": 1260,
+  "height": 1354,
+  "fps": 60,
+  "frames": 1807,
+  "duration_seconds": 30.117,
+  "retrieval_url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39KIyte0zxFYPvCbvUeDaWgPdFA/6c981410-860b-4c5c-9b01-e43bc07212d4.mp4",
+  "preserved_original": true,
+  "note": "El workflow descarga los bytes originales y verifica SHA256 antes de procesarlos."
+}

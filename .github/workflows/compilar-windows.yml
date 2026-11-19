@@ -31,17 +31,30 @@ jobs:
       - name: Ejecutar pruebas
         run: python -m pytest -q
 
-      - name: Validar importación de vídeo con MediaPipe Heavy
+      - name: Descargar video Rickroll original para regresión
+        shell: pwsh
+        run: |
+          $videoPath = "tests/fixtures/rickroll/Download.mp4"
+          New-Item -ItemType Directory -Force -Path (Split-Path $videoPath) | Out-Null
+          Invoke-WebRequest -Uri "https://d2ol7oe51mr4n9.cloudfront.net/user_39KIyte0zxFYPvCbvUeDaWgPdFA/6c981410-860b-4c5c-9b01-e43bc07212d4.mp4" -OutFile $videoPath
+          $actualHash = (Get-FileHash -Path $videoPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = "c3f36408d04ff9de5c254b4ae787f95b52a70383555a1580defd30b7dafe7622"
+          if ($actualHash -ne $expectedHash) {
+            throw "El video de regresión no coincide con el original. SHA256: $actualHash"
+          }
+          Write-Host "Video original verificado: $actualHash"
+
+      - name: Validar importación del Rickroll con MediaPipe Heavy
         run: >
           python -m mocap_app.video_test
-          --video tests/fixtures/Steve_29532/29532_normalizado_30fps.avi
+          --video tests/fixtures/rickroll/Download.mp4
           --template tests/fixtures/Steve_29532/Steve.miobject
-          --output artifacts/regression/Steve_29532_animado.miobject
+          --output artifacts/regression/Rickroll_Dance_animado.miobject
 
       - name: Publicar resultado de la prueba de movimiento
         uses: actions/upload-artifact@v4
         with:
-          name: MotionCapture-Regression-Animation
+          name: Rickroll-Dance-Regression
           path: artifacts/regression/
           if-no-files-found: error
           retention-days: 14

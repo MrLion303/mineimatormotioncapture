@@ -130,13 +130,33 @@ def timeline_for(data, part):
     )
 
 
+def test_supplied_working_torso_turn_channel_reference():
+    from pathlib import Path
+
+    reference_path = (
+        Path(__file__).parent
+        / "fixtures"
+        / "references"
+        / "torso_turn_channel_reference.json"
+    )
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
+
+    assert reference["format"] == 35
+    assert reference["body"]["parent"] == "char"
+    assert reference["body"]["keyframes"]["15"]["BEND_ANGLE_Z"] == pytest.approx(61.41356)
+    assert reference["body"]["keyframes"]["45"]["BEND_ANGLE_Z"] == pytest.approx(-47.32366)
+    assert reference["children"] == ["head", "left_arm", "right_arm"]
+
+
 def test_direct_retarget_uses_the_native_channels_from_the_mineimator_example():
     controls = calculate_pose_controls(standing_pose())
 
     assert set(controls) == {
         "body", "head", "left_arm", "right_arm", "left_leg", "right_leg"
     }
-    assert set(controls["body"]) == {"ROT_X", "ROT_Y", "ROT_Z"}
+    assert set(controls["body"]) == {
+        "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
+    }
     assert set(controls["head"]) == {"ROT_X", "ROT_Z"}
 
     for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
@@ -199,7 +219,7 @@ def test_torso_and_head_use_their_own_native_landmark_axes():
     controls = calculate_pose_controls(moved)
     assert any(
         abs(controls["body"][field] - original["body"][field]) > 1.0
-        for field in ("ROT_X", "ROT_Y", "ROT_Z")
+        for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z")
     )
     assert (
         abs(controls["head"]["ROT_X"] - original["head"]["ROT_X"]) > 1.0
@@ -264,10 +284,10 @@ def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
     body = timeline_for(exported, "body")
     first_body = body["keyframes"]["0"]
     assert all(abs(first_body[field]) < 0.001 for field in (
-        "ROT_X", "ROT_Y", "ROT_Z"
+        "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
     ))
-    # The torso rotates as a rigid body; mesh-bend values stay untouched.
-    for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"):
+    # Template rotation values stay fixed; the body uses native bend channels.
+    for field in ("ROT_X", "ROT_Y", "ROT_Z"):
         assert len({frame[field] for frame in body["keyframes"].values()}) == 1
 
     head = timeline_for(exported, "head")
@@ -359,9 +379,9 @@ def test_torso_forward_bow_uses_3d_relative_rotation():
         bowed["world"][index][2] -= 0.42
 
     controls = calculate_pose_controls(bowed, reference_pose=neutral)
-    assert abs(controls["body"]["ROT_X"]) > 8.0
-    assert abs(controls["body"]["ROT_Y"]) < 2.0
-    assert abs(controls["body"]["ROT_Z"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_X"]) > 8.0
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
 
 
 def test_torso_turn_uses_independent_yaw_without_fake_bow():
@@ -369,9 +389,9 @@ def test_torso_turn_uses_independent_yaw_without_fake_bow():
     rotated = _rotate_pose_y(neutral, 38.0, (11, 12, 23, 24))
 
     controls = calculate_pose_controls(rotated, reference_pose=neutral)
-    assert abs(controls["body"]["ROT_Y"]) > 25.0
-    assert abs(controls["body"]["ROT_X"]) < 2.0
-    assert abs(controls["body"]["ROT_Z"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) > 25.0
+    assert abs(controls["body"]["BEND_ANGLE_X"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 2.0
 
 
 def test_torso_side_lean_uses_roll_without_fake_yaw_or_forward_bow():
@@ -454,6 +474,16 @@ def _rotate_pose_z(pose, angle_degrees, indices):
     return rotated
 
 
+def test_torso_lateral_roll_uses_bend_y_not_yaw_bend_z():
+    neutral = standing_pose()
+    tilted = _rotate_pose_z(neutral, 32.0, (11, 12, 23, 24))
+
+    controls = calculate_pose_controls(tilted, reference_pose=neutral)
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) > 20.0
+    assert abs(controls["body"]["BEND_ANGLE_X"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
+
+
 def test_segment_rotation_reconstructs_a_diagonal_3d_direction():
     from math import cos, radians, sin, sqrt
 
@@ -506,6 +536,6 @@ def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
 
     controls = calculate_pose_controls(rotated, reference_pose=neutral)
 
-    assert controls["body"]["ROT_X"] == pytest.approx(100.0, abs=0.01)
-    assert abs(controls["body"]["ROT_Y"]) < 0.01
-    assert abs(controls["body"]["ROT_Z"]) < 0.01
+    assert controls["body"]["BEND_ANGLE_X"] == pytest.approx(100.0, abs=0.01)
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) < 0.01
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 0.01
