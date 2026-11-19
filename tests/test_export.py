@@ -495,3 +495,38 @@ def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
     assert controls["body"]["ROT_X"] == pytest.approx(100.0, abs=0.01)
     assert abs(controls["body"]["ROT_Y"]) < 0.01
     assert abs(controls["body"]["ROT_Z"]) < 0.01
+
+
+
+def test_export_uses_an_explicit_neutral_pose_for_initial_raised_arms(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+
+    neutral = standing_pose()
+    raised = standing_pose()
+    # Lift both elbows and wrists above shoulder height in the first frame.
+    raised["world"][13][1] = -1.48
+    raised["world"][15][1] = -1.88
+    raised["world"][14][1] = -1.48
+    raised["world"][16][1] = -1.88
+
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, raised), (1.0, neutral)],
+        fps=30,
+        duration_seconds=1.0,
+        optimize_keyframes=False,
+        smooth_motion=False,
+        calibration_pose=neutral,
+    )
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    left_arm = timeline_for(exported, "left_arm")["keyframes"]
+    right_arm = timeline_for(exported, "right_arm")["keyframes"]
+
+    assert abs(left_arm["0"]["ROT_Z"]) > 30.0
+    assert abs(right_arm["0"]["ROT_Z"]) > 30.0
+    assert abs(left_arm["30"]["ROT_Z"]) < 1.0
+    assert abs(right_arm["30"]["ROT_Z"]) < 1.0
