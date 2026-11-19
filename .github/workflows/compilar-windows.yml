@@ -98,6 +98,7 @@ jobs:
             --collect-all mmdet \
             --collect-all mmpose \
             --collect-all xtcocotools \
+            --hidden-import mocap_app.video_test \
             --add-data "$MMPOSE_MIM/configs;configs" \
             --add-data "$MMPOSE_MIM/model-index.yml;." \
             --add-data "$MMPOSE_MIM/dataset-index.yml;." \
@@ -163,6 +164,46 @@ jobs:
           fi
           test ! -f mmpose-smoke-test.log
           echo "El ejecutable empaquetado inicializó RTMPose y MotionBERT correctamente."
+
+      - name: Procesar el video real y exportar la animación
+        shell: pwsh
+        env:
+          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $exe = (Resolve-Path "dist/MineimatorMotionCapture/MineimatorMotionCapture.exe").Path
+          $runtimeLog = Join-Path $env:LOCALAPPDATA "NegativeStudios/MineimatorMotionCapture/logs/runtime.log"
+          Remove-Item $runtimeLog -Force -ErrorAction SilentlyContinue
+
+          & $exe --test-video "tests/fixtures/Steve_29532/29532_regression_30fps.mp4" --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            if (Test-Path $runtimeLog) {
+              Get-Content -Path $runtimeLog -Tail 300
+            }
+            exit $exitCode
+          }
+
+          $reportPath = "artifacts/Steve_29532_animado.diagnostico.json"
+          if (!(Test-Path $reportPath)) {
+            if (Test-Path $runtimeLog) { Get-Content -Path $runtimeLog -Tail 300 }
+            throw "No se generó el informe de diagnóstico."
+          }
+          if (!(Test-Path "artifacts/Steve_29532_animado.miobject")) {
+            throw "No se generó la animación .miobject."
+          }
+          $report = Get-Content -Path $reportPath -Raw | ConvertFrom-Json
+          Write-Host ("Cobertura: {0}% · cuerpo completo: {1}% · confianza: {2} · keyframes: {3}" -f $report.inference.pose_coverage_percent, $report.inference.complete_body_coverage_percent, $report.inference.mean_tracked_landmark_confidence, $report.export.total_keyframes)
+
+      - name: Publicar animación y diagnóstico de la prueba
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotionCapture-Regression-Animation
+          path: |
+            artifacts/Steve_29532_animado.miobject
+            artifacts/Steve_29532_animado.diagnostico.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Publicar un único ZIP descargable
         uses: actions/upload-artifact@v4
