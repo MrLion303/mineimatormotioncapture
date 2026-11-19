@@ -80,3 +80,6 @@ La reconstrucción 3D se infiere a partir de vídeo monocular: no equivale a med
 - OpenCV: captura de vídeo y preparación de la secuencia.
 - PySide6: interfaz de escritorio.
 - PyInstaller: compilación de Windows.
+
+
+El modo de diagnóstico acepta `--calibration-time 0.8` para seleccionar una postura neutra de referencia. La exportación conserva el movimiento de los fotogramas anteriores y posteriores a esa postura.
