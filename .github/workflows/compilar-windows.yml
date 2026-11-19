@@ -55,6 +55,12 @@ jobs:
           # combinación de NumPy/PyTorch/MMCV no puede cargarse.
           python -c "import numpy, torch, mmcv, mmengine, mmdet, mmpose, xtcocotools, pycocotools, matplotlib, PIL; from mmpose.apis import MMPoseInferencer; from mocap_app.motionbert import _motionbert_inferencer_kwargs; cfg = _motionbert_inferencer_kwargs('Windows'); assert cfg['det_model'] == 'whole_image'; assert numpy.__version__.startswith('1.26.'), numpy.__version__; assert torch.__version__.startswith('2.1.'), torch.__version__; print('OpenMMLab listo:', numpy.__version__, torch.__version__, mmcv.__version__, mmengine.__version__, mmdet.__version__, mmpose.__version__)"
 
+      - name: Recuperar pesos de los modelos
+        uses: actions/cache@v4
+        with:
+          path: .torch-windowed-smoke/hub/checkpoints
+          key: motionbert-windows-torchhub-${{ hashFiles('requirements-mmpose.txt', 'requirements-dev.txt') }}
+
       - name: Ejecutar pruebas
         shell: bash
         run: |
@@ -63,6 +69,8 @@ jobs:
 
       - name: Comprobar inicialización real de RTMPose y MotionBERT
         shell: bash
+        env:
+          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
         run: |
           set -euo pipefail
           python -c "from mocap_app.motionbert import create_motionbert_inferencer; engine=create_motionbert_inferencer(); assert hasattr(engine, 'inferencer'); print('RTMDet + RTMPose + MotionBERT inicializados correctamente en Windows')"
@@ -138,12 +146,6 @@ jobs:
           print("Configuraciones MMPose incluidas:", configs)
           PY
 
-
-      - name: Recuperar pesos de los modelos
-        uses: actions/cache@v4
-        with:
-          path: .torch-windowed-smoke/hub/checkpoints
-          key: motionbert-windows-torchhub-${{ hashFiles('requirements-mmpose.txt', 'requirements-dev.txt') }}
 
       - name: Probar RTMPose y MotionBERT desde el ejecutable empaquetado
         shell: bash
