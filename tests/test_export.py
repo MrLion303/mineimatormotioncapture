@@ -399,9 +399,9 @@ def test_torso_side_lean_uses_roll_without_fake_yaw_or_forward_bow():
     tilted = _rotate_pose_z(neutral, 32.0, (11, 12, 23, 24))
 
     controls = calculate_pose_controls(tilted, reference_pose=neutral)
-    assert abs(controls["body"]["ROT_Z"]) > 20.0
-    assert abs(controls["body"]["ROT_X"]) < 2.0
-    assert abs(controls["body"]["ROT_Y"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Y"]) > 20.0
+    assert abs(controls["body"]["BEND_ANGLE_X"]) < 2.0
+    assert abs(controls["body"]["BEND_ANGLE_Z"]) < 2.0
 
 
 def test_arms_stay_local_when_the_torso_turns():
