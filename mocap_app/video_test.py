@@ -91,6 +91,31 @@ def _inference_quality(
     }
 
 
+
+def _write_pose_diagnostics(
+    output_path: Path,
+    samples: list[tuple[float, dict[str, Any]]],
+    calibration_pose: dict[str, Any],
+) -> Path:
+    """Persist raw 3D landmarks and retarget controls for regression review."""
+    rows = []
+    for timestamp, pose in samples:
+        controls = calculate_pose_controls(pose, reference_pose=calibration_pose)
+        rows.append({
+            "timestamp": round(float(timestamp), 6),
+            "world": pose.get("world") or [],
+            "controls": controls,
+        })
+    path = output_path.with_suffix(".poses.json")
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps({"engine": "RTMPose + MotionBERT", "samples": rows}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+    return path
+
+
 def run_video_test(
     video_path: str | Path,
     template_path: str | Path,
@@ -168,6 +193,7 @@ def run_video_test(
         samples, calibration_time
     )
     quality = _inference_quality(samples, frame_count)
+    poses_path = _write_pose_diagnostics(output_path, samples, calibration_pose)
 
     print(
         f"Calibración neutral: {calibration_timestamp:.3f} s "
@@ -224,6 +250,7 @@ def run_video_test(
             "selected_timestamp": round(calibration_timestamp, 6),
             "strategy": "nearest_complete_neutral_pose",
         },
+        "pose_diagnostics_path": str(poses_path),
         "export": {
             **export_result,
             "duration_seconds": round(float(export_result["duration"]), 6),
