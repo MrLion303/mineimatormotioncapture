@@ -201,7 +201,7 @@ jobs:
           # Ejecuta el mismo flujo CLI con Python en el runner. La aplicación
           # empaquetada ya tiene su propia prueba de inicialización arriba; así
           # la captura no depende de la redirección stdout/stderr de --windowed.
-          python main.py --test-video $videoPath --template "tests/fixtures/Steve_29532/Steve.miobject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8 --smooth-motion
+          python main.py --test-video $videoPath --template "tests/fixtures/Mineimator_CB_1.0.0/Humanoid_Base.miproject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8 --smooth-motion
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             if (Test-Path $runtimeLog) {
@@ -219,7 +219,7 @@ jobs:
             throw "No se generó la animación .miobject."
           }
           $report = Get-Content -Path $reportPath -Raw | ConvertFrom-Json
-          Write-Host ("Cobertura: {0}% · cuerpo completo: {1}% · confianza: {2} · keyframes: {3}" -f $report.inference.pose_coverage_percent, $report.inference.complete_body_coverage_percent, $report.inference.mean_tracked_landmark_confidence, $report.export.total_keyframes)
+          Write-Host ("Cobertura de pose: {0}% · articulaciones: {1}% · confianza: {2} · rig completo: {3}% · fallback torso: {4} frames · keyframes: {5}" -f $report.inference.pose_coverage_percent, $report.inference.complete_body_coverage_percent, $report.inference.mean_tracked_landmark_confidence, $report.retarget.complete_rig_coverage_percent, $report.retarget.torso_frame_fallback_frames, $report.export.total_keyframes)
 
       - name: Publicar animación y diagnóstico de la prueba
         uses: actions/upload-artifact@v4
