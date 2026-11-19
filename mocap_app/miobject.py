@@ -229,6 +229,7 @@ def export_miobject(
     duration_seconds: float | None = None,
     optimize_keyframes: bool = True,
     smooth_motion: bool = False,
+    calibration_pose: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not 12 <= int(fps) <= 60:
         raise MiobjectError("Los FPS de salida deben estar entre 12 y 60.")
@@ -238,16 +239,24 @@ def export_miobject(
     if not samples:
         raise MiobjectError("No hay muestras de pose para exportar.")
 
-    # Use the first complete torso frame as the fixed reference for this take.
-    # A complete frame lets the exporter measure a true 3D relative rotation
-    # rather than subtracting unrelated camera-space Euler angles.
-    reference_pose = next(
-        (
-            pose for _, pose in samples
-            if "body" in calculate_pose_controls(pose)
-        ),
-        samples[0][1],
-    )
+    # Use an explicit neutral calibration pose when supplied (for example,
+    # a frame selected from a neutral window in an imported video). Otherwise
+    # retain the original behavior and calibrate against the first reliable pose.
+    reference_pose = calibration_pose
+    if reference_pose is None:
+        reference_pose = next(
+            (
+                pose for _, pose in samples
+                if "body" in calculate_pose_controls(pose)
+            ),
+            samples[0][1],
+        )
+    if "body" not in calculate_pose_controls(
+        reference_pose, reference_pose=reference_pose
+    ):
+        raise MiobjectError(
+            "La pose de calibración no contiene hombros y caderas visibles."
+        )
     static_part_fields = _template_static_part_fields(data)
     converted: list[tuple[float, dict[str, dict[str, float]]]] = []
     for timestamp, pose in samples:
@@ -265,9 +274,16 @@ def export_miobject(
         deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
 
-    # Calibrate every part/channel independently so a joint that becomes
-    # visible later also starts from its own first reliable observation.
+    # Calibrate each channel against the selected neutral pose. If a body
+    # part is occluded in that frame, fall back to its first reliable sample.
     reference: dict[str, dict[str, float]] = {}
+    calibration_controls = calculate_pose_controls(
+        reference_pose, reference_pose=reference_pose
+    )
+    for part, fields in calibration_controls.items():
+        reference[part] = {
+            field: float(value) for field, value in fields.items()
+        }
     for _, controls in converted:
         for part, fields in controls.items():
             part_reference = reference.setdefault(part, {})
