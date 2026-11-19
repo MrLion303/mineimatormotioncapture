@@ -6,6 +6,7 @@ from mocap_app.motionbert import (
     _mmpose_metadata_directory,
     _disable_motionbert_flip_test,
     _motionbert_inferencer_kwargs,
+    _current_pose2d_image_landmarks,
     map_h36m_keypoints_to_pose,
     process_motionbert_video,
     resample_capture_timestamps,
@@ -36,7 +37,7 @@ def test_motionbert_h36m_joints_map_to_expected_body_landmarks():
     assert all(value == 1.0 for value in world[11][3:])
 
 
-def test_motionbert_mapping_builds_head_helper_landmarks():
+def test_motionbert_mapping_preserves_real_neck_to_head_axis_without_fake_face_points():
     joints = np.zeros((17, 3), dtype=np.float32)
     joints[9] = (0.0, 0.0, 0.0)
     joints[10] = (0.0, 0.0, 1.0)
@@ -44,11 +45,36 @@ def test_motionbert_mapping_builds_head_helper_landmarks():
     joints[14] = (-0.5, 0.0, 0.8)
 
     pose = map_h36m_keypoints_to_pose(joints)
-    world = pose["world"]
 
-    assert world[0][:3] == pytest.approx([0.0, -1.3, 0.0])
-    assert world[7][:3] == pytest.approx([-0.12, -1.0, 0.0])
-    assert world[8][:3] == pytest.approx([0.12, -1.0, 0.0])
+    assert pose["head_axis"]["neck"] == pytest.approx([0.0, 0.0, 0.0])
+    assert pose["head_axis"]["head"] == pytest.approx([0.0, -1.0, 0.0])
+    assert pose["head_axis"]["confidence"] == pytest.approx(1.0)
+    # H36M has no nose or ears; those MediaPipe indices must stay unavailable.
+    for index in (0, 7, 8):
+        assert pose["world"][index][3:] == [0.0, 0.0]
+
+
+def test_current_pose2d_image_landmarks_reads_rtpose_pixel_coordinates():
+    from types import SimpleNamespace
+
+    points = np.arange(34, dtype=np.float32).reshape(1, 17, 2)
+    scores = np.linspace(0.0, 1.0, 17, dtype=np.float32).reshape(1, 17)
+    sample = SimpleNamespace(pred_instances=SimpleNamespace(
+        keypoints=points,
+        keypoint_scores=scores,
+    ))
+    inferencer = SimpleNamespace(inferencer=SimpleNamespace(
+        pose2d_model=SimpleNamespace(model=SimpleNamespace(
+            dataset_meta={"dataset_name": "coco"},
+        )),
+        _buffer={"pose_est_results_list": [[sample]]},
+    ))
+
+    landmarks = _current_pose2d_image_landmarks(inferencer)
+
+    assert len(landmarks) == 17
+    assert landmarks[0] == pytest.approx([0.0, 1.0, 0.0])
+    assert landmarks[-1] == pytest.approx([32.0, 33.0, 1.0])
 
 
 @pytest.mark.parametrize(
@@ -99,8 +125,9 @@ def test_motionbert_mapping_preserves_keypoint_confidence():
     world = pose["world"]
 
     assert world[11][3:] == pytest.approx([0.2, 0.2])
-    assert world[0][3:] == pytest.approx([0.4, 0.4])
-    assert world[7][3:] == pytest.approx([0.2, 0.2])
+    assert world[0][3:] == pytest.approx([0.0, 0.0])
+    assert world[7][3:] == pytest.approx([0.0, 0.0])
+    assert pose["head_axis"]["confidence"] == pytest.approx(0.4)
 
 
 @pytest.mark.parametrize(

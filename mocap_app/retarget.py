@@ -8,6 +8,8 @@ MIN_VISIBILITY = 0.35
 _EPSILON = 1e-6
 _MIN_TORSO_HEIGHT = 0.12
 _MIN_TORSO_WIDTH = 0.045
+# Below this sagittal share, the knee bend direction is geometrically ambiguous.
+_BEND_DIRECTION_AMBIGUITY_RATIO = 0.12
 
 # The mapped 3D landmark convention is screen-right, vertical-up is negative Y,
 # and the default front-facing depth axis points toward negative Z.
@@ -169,7 +171,7 @@ def _segment_rotation(start, end, frame) -> tuple[float, float]:
     return rot_x, rot_z
 
 
-def _bend_angle(start, joint, end, frame=None) -> float:
+def _bend_angle(start, joint, end, frame=None, previous_value=None) -> float:
     first = _subtract(start, joint)
     second = _subtract(end, joint)
     length_a = _length(first)
@@ -189,8 +191,21 @@ def _bend_angle(start, joint, end, frame=None) -> float:
     second_local = _local_coordinates(second, frame)
     bend_axis = _cross(first_local, second_local)
     forward_bend = -bend_axis[0]
+    axis_magnitude = _length(bend_axis)
+    direction_ratio = (
+        abs(forward_bend) / axis_magnitude
+        if axis_magnitude > _EPSILON else 0.0
+    )
+    if (
+        direction_ratio < _BEND_DIRECTION_AMBIGUITY_RATIO
+        and previous_value is not None
+        and abs(float(previous_value)) > _EPSILON
+    ):
+        # Near a profile/straight-on view, depth noise can change the sign while
+        # the measured knee geometry barely moves. Keep the last reliable side.
+        return magnitude if float(previous_value) > 0.0 else -magnitude
     if abs(forward_bend) < _EPSILON:
-        return magnitude
+        return magnitude if previous_value is None or float(previous_value) >= 0.0 else -magnitude
     return magnitude if forward_bend > 0.0 else -magnitude
 
 
@@ -201,6 +216,7 @@ def _limb_controls(
     end_index,
     frame,
     signed_bend: bool = False,
+    previous_controls: dict[str, float] | None = None,
 ):
     start = _point(pose, start_index)
     joint = _point(pose, joint_index)
@@ -213,7 +229,11 @@ def _limb_controls(
         "ROT_Y": 0.0,
         "ROT_Z": rot_z,
         "BEND_ANGLE_X": _bend_angle(
-            start, joint, end, frame if signed_bend else None
+            start,
+            joint,
+            end,
+            frame if signed_bend else None,
+            (previous_controls or {}).get("BEND_ANGLE_X") if signed_bend else None,
         ),
     }
 
@@ -222,6 +242,7 @@ def calculate_pose_controls(
     pose: dict[str, Any],
     reference_pose: dict[str, Any] | None = None,
     previous_frame=None,
+    previous_controls: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Convert 3D body landmarks to native Mine-imator human channels.
 
@@ -264,25 +285,56 @@ def calculate_pose_controls(
         if right_arm is not None:
             controls["right_arm"] = right_arm
 
-        nose = _point(pose, 0)
-        left_ear = _point(pose, 7)
-        right_ear = _point(pose, 8)
-        if nose is not None and left_ear is not None and right_ear is not None:
-            ear_mid = _midpoint(left_ear, right_ear)
-            ear_axis = _subtract(right_ear, left_ear)
-            face_direction = _subtract(nose, ear_mid)
-            face_local = _local_coordinates(face_direction, current_frame)
-            ear_local = _local_coordinates(ear_axis, current_frame)
+        # MotionBERT's Human3.6M skeleton has neck and head-center joints, but
+        # no nose or ears. Prefer its explicit neck-to-head axis instead of
+        # fabricating facial landmarks from the shoulders (which caused large
+        # false head rotations). True facial landmarks remain supported for
+        # pose sources that actually provide them.
+        head_axis = pose.get("head_axis")
+        head_rotation = None
+        if isinstance(head_axis, dict):
+            neck_value = head_axis.get("neck")
+            head_value = head_axis.get("head")
+            confidence = float(head_axis.get("confidence", 1.0))
+            if (
+                isinstance(neck_value, (list, tuple))
+                and isinstance(head_value, (list, tuple))
+                and len(neck_value) >= 3
+                and len(head_value) >= 3
+                and confidence >= MIN_VISIBILITY
+            ):
+                neck = tuple(float(v) for v in neck_value[:3])
+                head = tuple(float(v) for v in head_value[:3])
+                if _length(_subtract(head, neck)) >= _EPSILON:
+                    head_rotation = _segment_rotation(head, neck, current_frame)
+        if head_rotation is not None:
             controls["head"] = {
-                "ROT_X": degrees(atan2(face_local[1], max(abs(face_local[2]), 1e-5))),
-                "ROT_Z": degrees(atan2(ear_local[1], max(abs(ear_local[0]), 1e-5))),
+                "ROT_X": head_rotation[0],
+                "ROT_Z": head_rotation[1],
             }
+        else:
+            nose = _point(pose, 0)
+            left_ear = _point(pose, 7)
+            right_ear = _point(pose, 8)
+            if nose is not None and left_ear is not None and right_ear is not None:
+                ear_mid = _midpoint(left_ear, right_ear)
+                ear_axis = _subtract(right_ear, left_ear)
+                face_direction = _subtract(nose, ear_mid)
+                face_local = _local_coordinates(face_direction, current_frame)
+                ear_local = _local_coordinates(ear_axis, current_frame)
+                controls["head"] = {
+                    "ROT_X": degrees(atan2(face_local[1], max(abs(face_local[2]), 1e-5))),
+                    "ROT_Z": degrees(atan2(ear_local[1], max(abs(ear_local[0]), 1e-5))),
+                }
 
+    previous_controls = previous_controls or {}
     left_leg = _limb_controls(
-        pose, 23, 25, 27, reference_frame, signed_bend=True
+        pose, 23, 25, 27, reference_frame, signed_bend=True,
+        previous_controls=previous_controls.get("left_leg"),
     )
     right_leg = _limb_controls(
-        pose, 24, 26, 28, reference_frame, signed_bend=True
+        pose, 24, 26, 28, reference_frame, signed_bend=True,
+        previous_controls=previous_controls.get("right_leg"),
     )
     if left_leg is not None:
         controls["left_leg"] = left_leg

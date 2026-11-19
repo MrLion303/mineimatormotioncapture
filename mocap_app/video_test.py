@@ -41,329 +41,242 @@ def _select_calibration_sample(
     """Choose the closest fully trackable neutral-reference frame."""
     candidates: list[tuple[float, float, float, dict[str, Any]]] = []
     for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose, reference_pose=pose)
-        if not CALIBRATION_PARTS.issubset(controls):
-            continue
-        confidence_values = _landmark_confidences(pose)
-        if len(confidence_values) < 10:
-            continue
-        mean_confidence = sum(confidence_values) / len(confidence_values)
-        candidates.append(
-            (abs(float(timestamp) - requested_time), -mean_confidence, float(timestamp), pose)
-        )
+        controls = calculate_pose_contrÕÈZ®Ëkºwµçkz»§Â+a…æş
+Ş§ûZŠWè­û¥–‹­¦ëZ[Y\İ[\ˆ›İ[™
+›Ø]
+[Y\İ[\
+KŠKˆÛÜ›ˆÜÙK™Ù]
+ÛÜ›ŠHÜˆ×Kˆš[XYÙHˆÜÙK™Ù]
+š[XYÙHŠHÜˆ×KˆšXYØ^\ÈˆÜÙK™Ù]
+šXYØ^\ÈŠKˆÜœÛ×Ùœ˜[YWÙ˜[˜XÚÈˆ\ÙYÙ˜[˜XÚËˆ˜ÛÛ›ÛÈˆÛÛ›ÛËˆJBˆ›Üˆ\˜[Y\È[ˆÛÛ›ÛËš][\Ê
+N‚ˆ™]š[İ\×ØÛÛ›ÛËœÙ]Y˜][
+\ßJK\]J˜[Y\ÊB‚ˆ]Hİ]]Ü]Ú]ÜİY™š^
+‹œÜÙ\ËšœÛÛˆŠBˆ[\Ü˜\HH]Ú]ÜİY™š^
+]œİY™š^
+È‹\ŠBˆ[\Ü˜\KÜš]Wİ^
+ˆœÛÛ‹™[\ÊÈ™[™Ú[™Hˆ”•TÜÙH
+È[İ[Û‘T•‹œØ[\\Èˆ›İÜßK[œİ\™WØ\ØÚZOQ˜[ÙJKˆ[˜ÛÙ[™ÏH]‹N‹ˆ
+Bˆ[\Ü˜\Kœ™\XÙJ]
+Bˆİ[HX^
+K[ŠØ[\\ÊJBˆÛÛ\]WÜšY×Ùœ˜[Y\ÈHİ[JˆH›Üˆ›İÈ[ˆ›İÜÈYˆĞSP”USÓ—ÔT•Ëš\ÜİXœÙ]
+›İÖÈ˜ÛÛ›ÛÈ—JBˆ
+Bˆ]X[]HHÂˆÜœÛ×Ùœ˜[YWÙ˜[˜XÚ×Ùœ˜[Y\Èˆ˜[˜XÚ×Ùœ˜[Y\ËˆÜœÛ×Ùœ˜[YWÙ˜[˜XÚ×Ü\˜Ù[ˆ›İ[™
+LŒ
+ˆ˜[˜XÚ×Ùœ˜[Y\ÈÈİ[ŠKˆš[XYÙWÌ™Ùœ˜[Y\Èˆİ[JˆH›ÜˆËÜÙH[ˆØ[\\ÂˆYˆ\Ú[œİ[˜ÙJÜÙK™Ù]
+š[XYÙHŠK\İ
+H[™[ŠÜÙVÈš[XYÙH—JHOHMÂˆ
+Kˆš[XYÙWÌ™ØÛİ™\˜YÙWÜ\˜Ù[ˆ›İ[™
+ˆLŒ
+ˆİ[JˆH›ÜˆËÜÙH[ˆØ[\\ÂˆYˆ\Ú[œİ[˜ÙJÜÙK™Ù]
+š[XYÙHŠK\İ
+H[™[ŠÜÙVÈš[XYÙH—JHOHMÂˆ
+HÈİ[ˆ‹ˆ
+Kˆœ\ØÛİ™\˜YÙHˆÂˆ\ˆÂˆ™œ˜[Y\ÈˆÛİ[ˆ˜Ûİ™\˜YÙWÜ\˜Ù[ˆ›İ[™
+LŒ
+ˆÛİ[Èİ[ŠKˆBˆ›Üˆ\Ûİ[[ˆ\ØÛİ[Ëš][\Ê
+BˆKˆ˜ÛÛ\]WÜšY×Ùœ˜[Y\ÈˆÛÛ\]WÜšY×Ùœ˜[Y\Ëˆ˜ÛÛ\]WÜšY×ØÛİ™\˜YÙWÜ\˜Ù[ˆ›İ[™
+LŒ
+ˆÛÛ\]WÜšY×Ùœ˜[Y\ÈÈİ[ŠKˆ›X^ØÚ[›™[Üİ\ÙYÜ™Y\ÈˆX^ØÚ[›™[Üİ\Ëˆ›\™ÙWØÚ[›™[Üİ\×Ûİ™\—ÍŒÙYÜ™Y\Èˆ[Š\™ÙWÜİ\ÊKˆ›\™Ù\İØÚ[›™[Üİ\ÈˆÛÜY
+ˆ\™ÙWÜİ\ËÙ^O[[X™H][Nˆ][VÈ™[WÙYÜ™Y\È—K™]™\œÙOUYBˆ
+VÎŒÌKˆBˆ™]\›ˆ]]X[]B‚‚™YˆİÜš]Wİ˜XÚÚ[™×Ûİ™\›^JˆšY[×Ü]ˆ]ˆØ[\\Îˆ\İİ\VÙ›Ø]XİÜİ‹[WWWKˆİ]]Ü]ˆ]ŠHOˆ]›Û™N‚ˆˆˆ“İ™\›^H•TÜÙIÜÈ‘ÓĞÓÈ]Xİ[ÛœÈÛˆHÜšYÚ[˜[Ûİ\˜ÙHšY[Ëˆˆˆ‚ˆÛÛ›™Xİ[ÛœÈH
+ˆ
+KÊK
+ËJK
+‹
+K
+L
+K
+KŠKˆ
+KLJK
+‹LŠK
+LKLŠK
+LKLÊK
+LËMJKˆ
+L‹M
+K
+MMŠKˆ
+BˆØ\\™HHİŒ‹•šY[ĞØ\\™JİŠšY[×Ü]
+JBˆYˆ›İØ\\™Kš\ÓÜ[™Y
 
-    if not candidates:
-        raise RuntimeError(
-            "No se encontrÃ³ una pose de calibraciÃ³n con torso, cabeza, ambos brazos "
-            "y ambas piernas visibles. Revisa que el cuerpo completo aparezca en el vÃ­deo."
-        )
+N‚ˆ™]\›ˆ›Û™BˆÚYH[
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”SQWÕÒQ
+JBˆZYÚH[
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”SQWÒRQÒ
+JBˆœÈH›Ø]
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”ÊJHÜˆÌŒˆİ]]Ü]œ\™[›ZÙ\Š\™[ÏUYK^\İÛÚÏUYJBˆÜš]\ˆHİŒ‹•šY[ÕÜš]\ŠˆİŠİ]]Ü]
+KİŒ‹•šY[ÕÜš]\—Ù›İ\˜ØÊ
+ˆ›\ˆŠKœË
+ÚYZYÚ
+Bˆ
+BˆYˆ›İÜš]\‹š\ÓÜ[™Y
 
-    _, _, timestamp, pose = min(candidates, key=lambda item: (item[0], item[1]))
-    return timestamp, pose
+N‚ˆØ\\™Kœ™[X\ÙJ
+Bˆ™]\›ˆ›Û™BˆÜÙWØWÙœ˜[YHHÂˆ[
+›İ[™
+›Ø]
+[Y\İ[\
+H
+ˆœÊJNˆÜÙBˆ›Üˆ[Y\İ[\ÜÙH[ˆØ[\\ÂˆBˆ[™^HˆN‚ˆÚ[HYN‚ˆÚËœ˜[YHHØ\\™Kœ™XY
 
+BˆYˆ›İÚÎ‚ˆœ™XZÂˆÜÙHHÜÙWØWÙœ˜[YK™Ù]
+[™^
+Bˆ[XYÙWÜÚ[ÈHÜÙK™Ù]
+š[XYÙHŠHYˆÜÙH\È›İ›Û™H[ÙH›Û™BˆYˆ\Ú[œİ[˜ÙJ[XYÙWÜÚ[Ë\İ
+H[™[Š[XYÙWÜÚ[ÊHOHMÎ‚ˆÛÛÜ™ÈH×Bˆ›Üˆ][H[ˆ[XYÙWÜÚ[Î‚ˆYˆ\Ú[œİ[˜ÙJ][K
+\İ\JJH[™[Š][JHHÎ‚ˆKÛÛ™šY[˜ÙHH›Ø]
+][VÌJK›Ø]
+][VÌWJK›Ø]
+][VÌ—JBˆÛÛÜ™Ë˜\[™
 
-def _inference_quality(
-    samples: list[tuple[float, dict[str, Any]]],
-    frame_count: int,
-) -> dict[str, float | int]:
-    confidence_values: list[float] = []
-    complete_frames = 0
-    for _, pose in samples:
-        values = _landmark_confidences(pose)
-        confidence_values.extend(values)
-        if len(values) >= len(TRACKED_LANDMARKS):
-            complete_frames += 1
+[
+›İ[™
+
+JK[
+›İ[™
+JJKÛÛ™šY[˜ÙJJBˆ[ÙN‚ˆÛÛÜ™Ë˜\[™
 
-    total_frames = max(1, int(frame_count))
-    mean_confidence = (
-        sum(confidence_values) / len(confidence_values)
-        if confidence_values else 0.0
-    )
-    return {
-        "pose_frames": len(samples),
-        "pose_coverage_percent": round(100.0 * len(samples) / total_frames, 2),
-        "complete_body_frames": complete_frames,
-        "complete_body_coverage_percent": round(
-            100.0 * complete_frames / total_frames, 2
-        ),
-        "mean_tracked_landmark_confidence": round(mean_confidence, 4),
-        "tracked_landmark_observations": len(confidence_values),
-    }
+Œ
+JBˆ›ÜˆKˆ[ˆÛÛ›™Xİ[ÛœÎ‚ˆYˆÛÛÜ™ÖØWVÌ—HHŒÍH[™ÛÛÜ™ÖØ—VÌ—HHŒÍN‚ˆİŒ‹›[™Jœ˜[YKÛÛÜ™ÖØWVÎŒ—KÛÛÜ™ÖØ—VÎŒ—K
+ŒŒŒL
+K‹İŒ‹“S‘WĞPJBˆ›ÜˆKÛÛ™šY[˜ÙH[ˆÛÛÜ™Î‚ˆYˆÛÛ™šY[˜ÙHHŒÍN‚ˆİŒ‹˜Ú\˜ÛJœ˜[YK
+JK
+ÌMÌMJKLKİŒ‹“S‘WĞPJBˆ[ÙN‚ˆİŒ‹œ]^
+ˆœ˜[YK”•TÜÙH‘[™X\šÜÈ[˜]˜Z[X›H‹
+M‹ÌŠKˆİŒ‹‘“Ó•ÒT”ÒVWÔÒSTVK
+MJK‹İŒ‹“S‘WĞPKˆ
+BˆİŒ‹œ]^
+ˆœ˜[YKˆ”•TÜÙHÈ[İ[Û‘T•Ú[™^ÈœÎ‹Œ™Ÿ\È‹ˆ
+M‹ZYÚHN
+KİŒ‹‘“Ó•ÒT”ÒVWÔÒSTVMKˆ
+MKMKMJK‹İŒ‹“S‘WĞPKˆ
+BˆÜš]\‹Üš]Jœ˜[YJBˆ[™^
+ÏHBˆš[˜[N‚ˆØ\\™Kœ™[X\ÙJ
+BˆÜš]\‹œ™[X\ÙJ
+BˆYˆ[™^OH‚ˆİ]]Ü][›[šÊZ\ÜÚ[™×ÛÚÏUYJBˆ™]\›ˆ›Û™Bˆ™]\›ˆİ]]Ü]‚‚™Yˆ[—İšY[×İ\İ
+ˆšY[×Ü]ˆİˆ]ˆ[\]WÜ]ˆİˆ]ˆİ]]Ü]ˆİˆ]ˆØ[Xœ˜][Û—İ[YNˆ›Ø]Hˆİ]]ÙœÎˆ[HÌˆÜ[Z^™WÚÙ^Yœ˜[Y\Îˆ›ÛÛHYKˆÛ[ÛİÛ[İ[Ûˆ›ÛÛH˜[ÙKˆ™\ÜÜ]ˆİˆ]›Û™HH›Û™KŠHOˆXİÜİ‹[WN‚ˆšY[×Ü]H]
+šY[×Ü]
+K™^[™\Ù\Š
+Kœ™\ÛÛ™J
+Bˆ[\]WÜ]H]
+[\]WÜ]
+K™^[™\Ù\Š
+Kœ™\ÛÛ™J
+Bˆİ]]Ü]H]
+İ]]Ü]
+K™^[™\Ù\Š
+Kœ™\ÛÛ™J
+Bˆ™\ÜÜ]H
+ˆ]
+™\ÜÜ]
+K™^[™\Ù\Š
+Kœ™\ÛÛ™J
+BˆYˆ™\ÜÜ]\È›İ›Û™Bˆ[ÙHİ]]Ü]Ú]ÜİY™š^
+‹™XYÛ›ÜİXÛËšœÛÛˆŠBˆ
+B‚ˆYˆ›İšY[×Ü]š\×Ùš[J
+N‚ˆ˜Z\ÙHš[S›İ›İ[™\œ›ÜŠˆ“›ÈÙH[˜ÛÛ°ìÈ[°ëY[ÎˆİšY[×Ü]HŠBˆYˆ›İ[\]WÜ]š\×Ùš[J
+N‚ˆ˜Z\ÙHš[S›İ›İ[™\œ›ÜŠˆ“›ÈÙH[˜ÛÛ°ìÈH[[Nˆİ[\]WÜ]HŠB‚ˆÈ˜[Y]HHZ[™KZ[X]ÜˆšYÈ™Y›Ü™HÜ[™[™È[YHÛˆ[Ù[[™™\™[˜ÙK‚ˆØYİ[\]J[\]WÜ]
+B‚ˆØ\\™HHİŒ‹•šY[ĞØ\\™JİŠšY[×Ü]
+JBˆYˆ›İØ\\™Kš\ÓÜ[™Y
 
+N‚ˆ˜Z\ÙH[[YQ\œ›ÜŠˆ“›ÈÙHYÈXœš\ˆ[°ëY[ÎˆİšY[×Ü]HŠBˆN‚ˆœ˜[YWØÛİ[H[
+›İ[™
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”SQWĞÓÕS•
+JJBˆÛİ\˜ÙWÙœÈH›Ø]
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”ÊJBˆ[Y\İ[\Ë\˜][ÛˆHZ[İšY[×İ[Y[[™Jœ˜[YWØÛİ[Ûİ\˜ÙWÙœÊBˆÚYH[
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”SQWÕÒQ
+JBˆZYÚH[
+Ø\\™K™Ù]
+İŒ‹ĞTÔ“ÔÑ”SQWÒRQÒ
+JBˆš[˜[N‚ˆØ\\™Kœ™[X\ÙJ
+B‚ˆYˆ›İŒHØ[Xœ˜][Û—İ[YHH\˜][Û‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠˆˆ‘[[œİ[HHØ[Xœ˜XÚpìÛˆ
+ØØ[Xœ˜][Û—İ[YN‹ŒÙŸHÊH]YYHY\˜H‚ˆˆ™[°ëY[È
+Ù\˜][Û‹ŒÙŸHÊKˆ‚ˆ
+B‚ˆš[
+ˆˆ•°ëY[ÎˆİÚY^ÚZYÚH0­ÈÙœ˜[YWØÛİ[H›İÙÜ˜[X\È0­È‚ˆˆÜÛİ\˜ÙWÙœÎ‹ŒÙŸH”È0­ÈÙ\˜][Û‹ŒÙŸHÈ‹ˆ›\ÚUYKˆ
+Bˆš[
+’[šXÚX[^˜[™È•TÜÙHH[İ[Û‘T•‹‹ˆ‹›\ÚUYJBˆ[™™\™[˜Ù\ˆHÜ™X]WÛ[İ[Û˜™\Ú[™™\™[˜Ù\Š
+B‚ˆØ[\\Îˆ\İİ\VÙ›Ø]XİÜİ‹[WWWHH×Bˆİ\YH[YKœ\™—ØÛİ[\Š
+B‚ˆYˆÛ—Üİ]\ÊY\ÜØYÙNˆİŠHOˆ›Û™N‚ˆš[
+Y\ÜØYÙK›\ÚUYJB‚ˆYˆÛ—ÜÜÙJÜÙNˆXİÜİ‹[WK[Y\İ[\ˆ›Ø]
+HOˆ›Û™N‚ˆØ[\\Ë˜\[™
 
-
-def _write_pose_diagnostics(
-    output_path: Path,
-    samples: list[tuple[float, dict[str, Any]]],
-    calibration_pose: dict[str, Any],
-) -> tuple[Path, dict[str, Any]]:
-    """Persist raw landmarks, sequential controls and retarget coverage."""
-    rows = []
-    part_counts = {part: 0 for part in CALIBRATION_PARTS}
-    fallback_frames = 0
-    previous_frame = _torso_frame(calibration_pose) or WORLD_REFERENCE_FRAME
-    for timestamp, pose in samples:
-        raw_frame = _torso_frame(pose)
-        current_frame = _torso_frame(pose, fallback_frame=previous_frame)
-        used_fallback = raw_frame is None and current_frame is not None
-        controls = calculate_pose_controls(
-            pose,
-            reference_pose=calibration_pose,
-            previous_frame=previous_frame,
-        )
-        if current_frame is not None:
-            previous_frame = current_frame
-        for part in part_counts:
-            if part in controls:
-                part_counts[part] += 1
-        fallback_frames += int(used_fallback)
-        rows.append({
-            "timestamp": round(float(timestamp), 6),
-            "world": pose.get("world") or [],
-            "torso_frame_fallback": used_fallback,
-            "controls": controls,
-        })
-    path = output_path.with_suffix(".poses.json")
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps({"engine": "RTMPose + MotionBERT", "samples": rows}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    temporary.replace(path)
-    total = max(1, len(samples))
-    coverage = {
-        part: {
-            "frames": count,
-            "coverage_percent": round(100.0 * count / total, 2),
-        }
-        for part, count in part_counts.items()
-    }
-    quality = {
-        "torso_frame_fallback_frames": fallback_frames,
-        "torso_frame_fallback_percent": round(100.0 * fallback_frames / total, 2),
-        "part_coverage": coverage,
-        "complete_rig_frames": sum(
-            1 for row in rows if CALIBRATION_PARTS.issubset(row["controls"])
-        ),
-        "complete_rig_coverage_percent": round(
-            100.0 * sum(1 for row in rows if CALIBRATION_PARTS.issubset(row["controls"])) / total,
-            2,
-        ),
-    }
-    return path, quality
-
-
-def run_video_test(
-    video_path: str | Path,
-    template_path: str | Path,
-    output_path: str | Path,
-    calibration_time: float = 0.8,
-    output_fps: int = 30,
-    optimize_keyframes: bool = True,
-    smooth_motion: bool = False,
-    report_path: str | Path | None = None,
-) -> dict[str, Any]:
-    video_path = Path(video_path).expanduser().resolve()
-    template_path = Path(template_path).expanduser().resolve()
-    output_path = Path(output_path).expanduser().resolve()
-    report_path = (
-        Path(report_path).expanduser().resolve()
-        if report_path is not None
-        else output_path.with_suffix(".diagnostico.json")
-    )
-
-    if not video_path.is_file():
-        raise FileNotFoundError(f"No se encontrÃ³ el vÃ­deo: {video_path}")
-    if not template_path.is_file():
-        raise FileNotFoundError(f"No se encontrÃ³ la plantilla: {template_path}")
-
-    # Validate the Mine-imator rig before spending time on model inference.
-    load_template(template_path)
-
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise RuntimeError(f"No se pudo abrir el vÃ­deo: {video_path}")
-    try:
-        frame_count = int(round(capture.get(cv2.CAP_PROP_FRAME_COUNT)))
-        source_fps = float(capture.get(cv2.CAP_PROP_FPS))
-        timestamps, duration = build_video_timeline(frame_count, source_fps)
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    finally:
-        capture.release()
-
-    if not 0.0 <= calibration_time <= duration:
-        raise ValueError(
-            f"El instante de calibraciÃ³n ({calibration_time:.3f} s) queda fuera "
-            f"del vÃ­deo ({duration:.3f} s)."
-        )
-
-    print(
-        f"VÃ­deo: {width}x{height} Â· {frame_count} fotogramas Â· "
-        f"{source_fps:.3f} FPS Â· {duration:.3f} s",
-        flush=True,
-    )
-    print("Inicializando RTMPose y MotionBERT...", flush=True)
-    inferencer = create_motionbert_inferencer()
-
-    samples: list[tuple[float, dict[str, Any]]] = []
-    started = time.perf_counter()
-
-    def on_status(message: str) -> None:
-        print(message, flush=True)
-
-    def on_pose(pose: dict[str, Any], timestamp: float) -> None:
-        samples.append((float(timestamp), pose))
-
-    processed = process_motionbert_video(
-        video_path,
-        timestamps,
-        on_pose,
-        on_status,
-        inferencer=inferencer,
-    )
-    elapsed = max(0.001, time.perf_counter() - started)
-    if processed < 1 or not samples:
-        raise RuntimeError("RTMPose/MotionBERT no devolviÃ³ poses vÃ¡lidas para exportar.")
-
-    calibration_timestamp, calibration_pose = _select_calibration_sample(
-        samples, calibration_time
-    )
-    quality = _inference_quality(samples, frame_count)
-    poses_path, retarget_quality = _write_pose_diagnostics(
-        output_path, samples, calibration_pose
-    )
-
-    print(
-        f"CalibraciÃ³n neutral: {calibration_timestamp:.3f} s "
-        f"(solicitada: {calibration_time:.3f} s)",
-        flush=True,
-    )
-    export_result = export_miobject(
-        template_path,
-        output_path,
-        samples,
-        fps=output_fps,
-        duration_seconds=duration,
-        optimize_keyframes=optimize_keyframes,
-        smooth_motion=smooth_motion,
-        calibration_pose=calibration_pose,
-    )
-
-    warnings: list[str] = []
-    if quality["pose_coverage_percent"] < 85.0:
-        warnings.append(
-            "La cobertura de poses es inferior al 85%; revisa los fotogramas sin detecciÃ³n."
-        )
-    if quality["complete_body_coverage_percent"] < 70.0:
-        warnings.append(
-            "La cobertura simultÃ¡nea de las doce articulaciones principales es inferior al 70%."
-        )
-    if quality["mean_tracked_landmark_confidence"] < 0.60:
-        warnings.append(
-            "La confianza media de las articulaciones es baja; revisa oclusiones y encuadre."
-        )
-
-    report = {
-        "video": {
-            "path": str(video_path),
-            "width": width,
-            "height": height,
-            "frame_count": frame_count,
-            "source_fps": source_fps,
-            "duration_seconds": round(duration, 6),
-        },
-        "template": {
-            "path": str(template_path),
-            "format": load_template(template_path).get("format"),
-        },
-        "inference": {
-            **quality,
-            "processing_fps": round(processed / elapsed, 3),
-            "processing_seconds": round(elapsed, 3),
-            "engine": "RTMPose + MotionBERT",
-            "device": "cpu",
-        },
-        "calibration": {
-            "requested_timestamp": calibration_time,
-            "selected_timestamp": round(calibration_timestamp, 6),
-            "strategy": "nearest_complete_neutral_pose",
-        },
-        "pose_diagnostics_path": str(poses_path),
-        "retarget": retarget_quality,
-        "export": {
-            **export_result,
-            "duration_seconds": round(float(export_result["duration"]), 6),
-        },
-        "warnings": warnings,
-    }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_report = report_path.with_suffix(report_path.suffix + ".tmp")
-    temporary_report.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    temporary_report.replace(report_path)
-
-    print(
-        f"Captura exportada: {output_path}\n"
-        f"DiagnÃ³stico: {report_path}\n"
-        f"Cobertura: {quality['pose_coverage_percent']}% Â· "
-        f"confianza media: {quality['mean_tracked_landmark_confidence']} Â· "
-        f"keyframes: {export_result['total_keyframes']} Â· "
-        f"rig completo: {retarget_quality['complete_rig_coverage_percent']}% Â· "
-        f"fallback torso: {retarget_quality['torso_frame_fallback_frames']} frames",
-        flush=True,
-    )
-    for warning in warnings:
-        print(f"ADVERTENCIA: {warning}", flush=True)
-    return report
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Procesa un vÃ­deo con RTMPose/MotionBERT y exporta un .miobject."
-    )
-    parser.add_argument("--test-video", required=True, help="Ruta del vÃ­deo de entrada.")
-    parser.add_argument("--template", required=True, help="Plantilla humana .miobject.")
-    parser.add_argument("--output", required=True, help="Ruta del .miobject animado.")
-    parser.add_argument(
-        "--calibration-time",
-        type=float,
-        default=0.8,
-        help="Segundo del vÃ­deo que contiene la postura neutra (por defecto: 0.8).",
-    )
-    parser.add_argument("--fps", type=int, default=30, help="FPS de exportaciÃ³n (12-60).")
-    parser.add_argument(
-        "--smooth-motion",
-        action="store_true",
-        help="Aplica estabilizaciÃ³n temporal al movimiento.",
-    )
-    parser.add_argument(
-        "--no-optimize-keyframes",
-        action="store_true",
-        help="Conserva un keyframe por cada fotograma exportado.",
-    )
-    parser.add_argument("--report", help="Ruta opcional del informe JSON.")
-    args = parser.parse_args(argv)
-
-    try:
-        report = run_video_test(
-            args.test_video,
-            args.template,
-            args.output,
-            calibration_time=args.calibration_time,
-            output_fps=args.fps,
-            optimize_keyframes=not args.no_optimize_keyframes,
-            smooth_motion=args.smooth_motion,
-            report_path=args.report,
-        )
-        return 0 if report["inference"]["pose_frames"] > 0 else 1
-    except Exception as exc:
-        print(f"ERROR: {exc}", flush=True)
-        traceback.print_exc()
-        return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+›Ø]
+[Y\İ[\
+KÜÙJJB‚ˆ›ØÙ\ÜÙYH›ØÙ\Ü×Û[İ[Û˜™\İšY[ÊˆšY[×Ü]ˆ[Y\İ[\ËˆÛ—ÜÜÙKˆÛ—Üİ]\Ëˆ[™™\™[˜Ù\Z[™™\™[˜Ù\‹ˆ
+Bˆ[\ÙYHX^
+ŒK[YKœ\™—ØÛİ[\Š
+HHİ\Y
+BˆYˆ›ØÙ\ÜÙYHÜˆ›İØ[\\Î‚ˆ˜Z\ÙH[[YQ\œ›ÜŠ”•TÜÙKÓ[İ[Û‘T•›È]›ÛšpìÈÜÙ\È°è[Y\È\˜H^Ü\‹ˆŠB‚ˆØ[Xœ˜][Û—İ[Y\İ[\Ø[Xœ˜][Û—ÜÜÙHHÜÙ[XİØØ[Xœ˜][Û—ÜØ[\JˆØ[\\ËØ[Xœ˜][Û—İ[YBˆ
+Bˆ]X[]HHÚ[™™\™[˜ÙWÜ]X[]JØ[\\Ëœ˜[YWØÛİ[
+BˆÜÙ\×Ü]™]\™Ù]Ü]X[]HHİÜš]WÜÜÙWÙXYÛ›ÜİXÜÊˆİ]]Ü]Ø[\\ËØ[Xœ˜][Û—ÜÜÙBˆ
+Bˆİ™\›^WÜ]HİÜš]Wİ˜XÚÚ[™×Ûİ™\›^JˆšY[×Ü]Ø[\\Ëİ]]Ü]Ú]ÜİY™š^
+‹œÙYİZ[ZY[Ë›\ŠBˆ
+B‚ˆš[
+ˆˆØ[Xœ˜XÚpìÛˆ™]]˜[ˆØØ[Xœ˜][Û—İ[Y\İ[\‹ŒÙŸHÈ‚ˆˆŠÛÛXÚ]YNˆØØ[Xœ˜][Û—İ[YN‹ŒÙŸHÊH‹ˆ›\ÚUYKˆ
+Bˆ^ÜÜ™\İ[H^ÜÛZ[Øš™Xİ
+ˆ[\]WÜ]ˆİ]]Ü]ˆØ[\\ËˆœÏ[İ]]ÙœËˆ\˜][Û—ÜÙXÛÛ™ÏY\˜][Û‹ˆÜ[Z^™WÚÙ^Yœ˜[Y\Ï[Ü[Z^™WÚÙ^Yœ˜[Y\ËˆÛ[ÛİÛ[İ[Û\Û[ÛİÛ[İ[Û‹ˆØ[Xœ˜][Û—ÜÜÙOXØ[Xœ˜][Û—ÜÜÙKˆ
+B‚ˆØ\›š[™ÜÎˆ\İÜİ—HH×BˆYˆ]X[]VÈœÜÙWØÛİ™\˜YÙWÜ\˜Ù[—HKŒ‚ˆØ\›š[™ÜË˜\[™
+ˆ“HÛØ™\\˜HHÜÙ\È\È[™™\š[Üˆ[INÈ™]š\ØHÜÈ›İÙÜ˜[X\ÈÚ[ˆ]XØÚpìÛ‹ˆ‚ˆ
+BˆYˆ]X[]VÈ˜ÛÛ\]WØ›ÙWØÛİ™\˜YÙWÜ\˜Ù[—HÌŒ‚ˆØ\›š[™ÜË˜\[™
+ˆ“HÛØ™\\˜HÚ[][0è[™XHH\ÈØÙH\Xİ[XÚ[Û™\Èš[˜Ú\[\È\È[™™\š[Üˆ[Ì	Kˆ‚ˆ
+BˆYˆ]X[]VÈ›YX[—İ˜XÚÙYÛ[™X\š×ØÛÛ™šY[˜ÙH—HŒ‚ˆØ\›š[™ÜË˜\[™
+ˆ“HÛÛ™šX[˜HYYXHH\È\Xİ[XÚ[Û™\È\È˜Z˜NÈ™]š\ØHØÛ\Ú[Û™\ÈH[˜İXY™Kˆ‚ˆ
+BˆYˆ™]\™Ù]Ü]X[]VÈš[XYÙWÌ™ØÛİ™\˜YÙWÜ\˜Ù[—HLŒ‚ˆØ\›š[™ÜË˜\[™
+ˆ“›ÈÙHYY\›ÛˆİX\™\ˆ]XØÚ[Û™\È‘•TÜÙH[ˆ[Y[›ÜÈ[L	HH\ÈÜÙ\ÎÈHÛÛ\\˜XÚpìÛˆš\İX[‘\İ\°èH[˜ÛÛ\]Kˆ‚ˆ
+BˆYˆ™]\™Ù]Ü]X[]VÈ˜ÛÛ\]WÜšY×ØÛİ™\˜YÙWÜ\˜Ù[—HLŒ‚ˆØ\›š[™ÜË˜\[™
+ˆ“HÛØ™\\˜H[šYÈÛÛ\]È\È[™™\š[Üˆ[L	NÈ™]š\ØHÜÈ[\˜[ÜÈÚ[ˆÜœÛÈÈØX™^˜Kˆ‚ˆ
+BˆYˆ™]\™Ù]Ü]X[]VÈ›\™ÙWØÚ[›™[Üİ\×Ûİ™\—ÍŒÙYÜ™Y\È—N‚ˆØ\›š[™ÜË˜\[™
+ˆ”ÙH]Xİ\›ÛˆØ[Xš[ÜÈHpè\ÈHŒ0¬[™H]Y\İ˜\È[ˆ[›ÈÈpè\ÈØ[˜[\ÎÈ™]š\ØH[šY[ÈH˜XÚÚ[™ÈHÜÈØ[ÜÈ\İYÜËˆ‚ˆ
+B‚ˆ™\ÜHÂˆšY[ÈˆÂˆœ]ˆİŠšY[×Ü]
+KˆÚYˆÚYˆšZYÚˆZYÚˆ™œ˜[YWØÛİ[ˆœ˜[YWØÛİ[ˆœÛİ\˜ÙWÙœÈˆÛİ\˜ÙWÙœËˆ™\˜][Û—ÜÙXÛÛ™Èˆ›İ[™
+\˜][Û‹ŠKˆKˆ[\]HˆÂˆœ]ˆİŠ[\]WÜ]
+Kˆ™›Ü›X]ˆØYİ[\]J[\]WÜ]
+K™Ù]
+™›Ü›X]ŠKˆKˆš[™™\™[˜ÙHˆÂˆ
+Šœ]X[]Kˆœ›ØÙ\ÜÚ[™×ÙœÈˆ›İ[™
+›ØÙ\ÜÙYÈ[\ÙYÊKˆœ›ØÙ\ÜÚ[™×ÜÙXÛÛ™Èˆ›İ[™
+[\ÙYÊKˆ™[™Ú[™Hˆ”•TÜÙH
+È[İ[Û‘T•‹ˆ™]šXÙHˆ˜ÜH‹ˆKˆ˜Ø[Xœ˜][ÛˆˆÂˆœ™\]Y\İYİ[Y\İ[\ˆØ[Xœ˜][Û—İ[YKˆœÙ[XİYİ[Y\İ[\ˆ›İ[™
+Ø[Xœ˜][Û—İ[Y\İ[\ŠKˆœİ˜]YŞHˆ›™X\™\İØÛÛ\]WÛ™]]˜[ÜÜÙH‹ˆKˆœÜÙWÙXYÛ›ÜİXÜ×Ü]ˆİŠÜÙ\×Ü]
+Kˆ˜XÚÚ[™×Ûİ™\›^WÜ]ˆİŠİ™\›^WÜ]
+HYˆİ™\›^WÜ][ÙH›Û™Kˆœ™]\™Ù]ˆ™]\™Ù]Ü]X[]Kˆ™^ÜˆÂˆ
+Š™^ÜÜ™\İ[ˆ™\˜][Û—ÜÙXÛÛ™Èˆ›İ[™
+›Ø]
+^ÜÜ™\İ[È™\˜][Ûˆ—JKŠKˆKˆØ\›š[™ÜÈˆØ\›š[™ÜËˆBˆ™\ÜÜ]œ\™[›ZÙ\Š\™[ÏUYK^\İÛÚÏUYJBˆ[\Ü˜\WÜ™\ÜH™\ÜÜ]Ú]ÜİY™š^
+™\ÜÜ]œİY™š^
+È‹\ŠBˆ[\Ü˜\WÜ™\ÜÜš]Wİ^
+ˆœÛÛ‹™[\Ê™\Ü[œİ\™WØ\ØÚZOQ˜[ÙK[™[LŠH
+È—ˆ‹ˆ[˜ÛÙ[™ÏH]‹N‹ˆ
+Bˆ[\Ü˜\WÜ™\Üœ™\XÙJ™\ÜÜ]
+B‚ˆš[
+ˆˆØ\\˜H^ÜYNˆÛİ]]Ü]Wˆ‚ˆˆ‘XYÛ°ìÜİXÛÎˆÜ™\ÜÜ]Wˆ‚ˆˆÛØ™\\˜NˆÜ]X[]VÉÜÜÙWØÛİ™\˜YÙWÜ\˜Ù[	×_IH0­È‚ˆˆ˜ÛÛ™šX[˜HYYXNˆÜ]X[]VÉÛYX[—İ˜XÚÙYÛ[™X\š×ØÛÛ™šY[˜ÙI×_H0­È‚ˆˆšÙ^Yœ˜[Y\ÎˆÙ^ÜÜ™\İ[Éİİ[ÚÙ^Yœ˜[Y\É×_H0­È‚ˆˆœšYÈÛÛ\]ÎˆÜ™]\™Ù]Ü]X[]VÉØÛÛ\]WÜšY×ØÛİ™\˜YÙWÜ\˜Ù[	×_IH0­È‚ˆˆ™˜[˜XÚÈÜœÛÎˆÜ™]\™Ù]Ü]X[]VÉİÜœÛ×Ùœ˜[YWÙ˜[˜XÚ×Ùœ˜[Y\É×_Hœ˜[Y\È0­È‚ˆˆœØ[ÜÈŒ0¬ˆÜ™]\™Ù]Ü]X[]VÉÛ\™ÙWØÚ[›™[Üİ\×Ûİ™\—ÍŒÙYÜ™Y\É×_H‹ˆ›\ÚUYKˆ
+Bˆ›ÜˆØ\›š[™È[ˆØ\›š[™ÜÎ‚ˆš[
+ˆQ‘T•SÒPNˆİØ\›š[™ßH‹›\ÚUYJBˆ™]\›ˆ™\Ü‚‚™YˆXZ[Š\™İˆ\İÜİ—H›Û™HH›Û™JHOˆ[‚ˆ\œÙ\ˆH\™Ü\œÙK\™İ[Y[\œÙ\Šˆ\ØÜš\[ÛH”›ØÙ\ØH[ˆ°ëY[ÈÛÛˆ•TÜÙKÓ[İ[Û‘T•H^ÜH[ˆ›Z[Øš™Xİˆ‚ˆ
+Bˆ\œÙ\‹˜YØ\™İ[Y[
+‹K]\İ]šY[È‹™\]Z\™YUYK[H”]H[°ëY[ÈH[˜YKˆŠBˆ\œÙ\‹˜YØ\™İ[Y[
+‹K][\]H‹™\]Z\™YUYK[H”[[H[X[˜H›Z[Øš™XİˆŠBˆ\œÙ\‹˜YØ\™İ[Y[
+‹K[İ]]‹™\]Z\™YUYK[H”]H[›Z[Øš™Xİ[š[XYËˆŠBˆ\œÙ\‹˜YØ\™İ[Y[
+ˆ‹KXØ[Xœ˜][Û‹][YH‹ˆ\OY›Ø]ˆY˜][Lˆ[H”ÙYİ[™È[°ëY[È]YHÛÛY[™HHÜİ\˜H™]]˜H
+ÜˆY™XİÎˆ
+Kˆ‹ˆ
+Bˆ\œÙ\‹˜YØ\™İ[Y[
+‹KYœÈ‹\OZ[Y˜][LÌ[H‘”ÈH^ÜXÚpìÛˆ
+L‹MŒ
+KˆŠBˆ\œÙ\‹˜YØ\™İ[Y[
+ˆ‹K\Û[Ûİ[[İ[Ûˆ‹ˆXİ[ÛHœİÜ™WİYH‹ˆ[H\XØH\İXš[^˜XÚpìÛˆ[\Ü˜[[[İš[ZY[Ëˆ‹ˆ
+Bˆ\œÙ\‹˜YØ\™İ[Y[
+ˆ‹K[›Ë[Ü[Z^™KZÙ^Yœ˜[Y\È‹ˆXİ[ÛHœİÜ™WİYH‹ˆ[HÛÛœÙ\˜H[ˆÙ^Yœ˜[YHÜˆØYH›İÙÜ˜[XH^ÜYËˆ‹ˆ
+Bˆ\œÙ\‹˜YØ\™İ[Y[
+‹K\™\Ü‹[H”]HÜÚ[Û˜[[[™›Ü›YH”ÓÓ‹ˆŠBˆ\™ÜÈH\œÙ\‹œ\œÙWØ\™ÜÊ\™İŠB‚ˆN‚ˆ™\ÜH[—İšY[×İ\İ
+ˆ\™ÜË\İİšY[Ëˆ\™ÜË[\]Kˆ\™ÜË›İ]]ˆØ[Xœ˜][Û—İ[YOX\™ÜË˜Ø[Xœ˜][Û—İ[YKˆİ]]ÙœÏX\™ÜË™œËˆÜ[Z^™WÚÙ^Yœ˜[Y\Ï[›İ\™ÜË››×ÛÜ[Z^™WÚÙ^Yœ˜[Y\ËˆÛ[ÛİÛ[İ[ÛX\™ÜËœÛ[ÛİÛ[İ[Û‹ˆ™\ÜÜ]X\™ÜËœ™\Üˆ
+Bˆ™]\›ˆYˆ™\ÜÈš[™™\™[˜ÙH—VÈœÜÙWÙœ˜[Y\È—Hˆ[ÙHBˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆš[
+ˆ‘T”“ÔˆÙ^ßH‹›\ÚUYJBˆ˜XÙX˜XÚËœš[Ù^Ê
+Bˆ™]\›ˆB‚‚šYˆ×Û˜[YW×ÈOH—×ÛXZ[—×È‚ˆ˜Z\ÙHŞ\İ[Q^]
+XZ[Š
+JB

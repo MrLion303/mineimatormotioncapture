@@ -12,6 +12,7 @@ from mocap_app.miobject import (
 )
 from mocap_app.retarget import (
     WORLD_REFERENCE_FRAME,
+    _bend_angle,
     _segment_rotation,
     _torso_frame,
     calculate_pose_controls,
@@ -58,547 +59,194 @@ def make_template(path):
             "BEND_ANGLE_X": 0.0, "POS_Z": -0.53,
         },
         "right_arm": {
-            "ROT_X": 0.0, "ROT_Y": 0.0, "ROT_Z": 0.0,
-            "BEND_ANGLE_X": 0.0, "POS_Z": -0.43,
-        },
-        "left_leg": {
-            "ROT_X": 0.0, "ROT_Y": 0.0, "ROT_Z": 0.0,
-            "BEND_ANGLE_X": 0.0,
-        },
-        "right_leg": {
-            "ROT_X": 0.0, "ROT_Y": 0.0, "ROT_Z": 0.0,
-            "BEND_ANGLE_X": 0.0,
-        },
-    }
-    timelines = [
-        {
-            "id": "folder",
-            "type": "folder",
-            "keyframes": {"0": {"ROT_Y": 80}, "30": {"ROT_Y": 120}},
-        },
-        {
-            "id": "character",
-            "type": "char",
-            "default_values": {"POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0},
-            "keyframes": {
-                "0": {"POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0, "ROT_Z": 0.0},
-                "30": {"POS_X": 80.0, "POS_Y": 90.0, "POS_Z": 45.0, "ROT_Z": 90.0},
-            },
-        },
-    ]
-    part_ids = {part: f"part-{index}" for index, part in enumerate(parts)}
-    for part, values in parts.items():
-        parent = (
-            part_ids["body"]
-            if part in {"head", "left_arm", "right_arm"}
-            else "character"
-        )
-        first = dict(values)
-        if part == "head":
-            first["TEXTURE_OBJ"] = "GREGOR_HEAD_TEXTURE"
-        timelines.append({
-            "id": part_ids[part],
-            "type": "bodypart",
-            "model_part_name": part,
-            "parent": parent,
-            "keyframes": {"0": first},
-        })
-    timelines.append({
-        "id": "hat",
-        "type": "bodypart",
-        "model_part_name": "hat",
-        "keyframes": {},
-    })
-    template = {
-        "format": 35,
-        "created_in": "2.0.2 Community Build 1.0.0",
-        "templates": [{
-            "model": {
-                "name": "human",
-                "state": {"variant": "steve", "type": "wide"},
-            }
-        }],
-        "timelines": timelines,
-        "resources": [],
-    }
-    path.write_text(json.dumps(template), encoding="utf-8")
-
-
-def timeline_for(data, part):
-    return next(
-        item for item in data["timelines"]
-        if item.get("model_part_name") == part
-    )
-
-
-def test_direct_retarget_uses_the_native_channels_from_the_mineimator_example():
-    controls = calculate_pose_controls(standing_pose())
-
-    assert set(controls) == {
-        "body", "head", "left_arm", "right_arm", "left_leg", "right_leg"
-    }
-    assert set(controls["body"]) == {"ROT_X", "ROT_Y", "ROT_Z"}
-    assert set(controls["head"]) == {"ROT_X", "ROT_Z"}
-
-    for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
-        assert set(controls[part]) == {
-            "ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"
-        }
-        assert abs(controls[part]["ROT_Y"]) < 0.001
-
-    for part in ("left_leg", "right_leg"):
-        assert abs(controls[part]["ROT_X"]) < 0.01
-        assert abs(controls[part]["ROT_Z"]) < 1.0
-        assert abs(controls[part]["BEND_ANGLE_X"]) < 1.0
-
-
-def test_left_and_right_legs_follow_their_own_captured_segments():
-    neutral = standing_pose()
-    moved = standing_pose()
-    moved["world"][25][0] -= 0.16
-    moved["world"][27][0] -= 0.30
-    moved["world"][26][0] += 0.14
-    moved["world"][28][0] += 0.27
-    moved["world"][27][1] += 0.12
-    moved["world"][28][1] -= 0.08
-
-    original = calculate_pose_controls(neutral)
-    controls = calculate_pose_controls(moved)
-    for part in ("left_leg", "right_leg"):
-        assert abs(controls[part]["ROT_Z"] - original[part]["ROT_Z"]) > 5.0
-        assert 0.0 <= controls[part]["BEND_ANGLE_X"] <= 150.0
-    assert "root" not in controls
-    assert "char" not in controls
-
-
-def test_knee_bend_direction_distinguishes_forward_from_backward():
-    neutral = standing_pose()
-    forward = standing_pose()
-    backward = standing_pose()
-    forward["world"][25][2] = -0.25
-    backward["world"][25][2] = 0.25
-
-    forward_controls = calculate_pose_controls(forward, reference_pose=neutral)
-    backward_controls = calculate_pose_controls(backward, reference_pose=neutral)
-
-    assert forward_controls["left_leg"]["BEND_ANGLE_X"] > 0.0
-    assert backward_controls["left_leg"]["BEND_ANGLE_X"] < 0.0
-
-
-def test_arm_segments_and_elbow_bends_are_mapped_independently():
-    neutral = standing_pose()
-    moved = standing_pose()
-    moved["world"][13][2] += 0.22
-    moved["world"][15][2] += 0.40
-    moved["world"][14][2] -= 0.18
-    moved["world"][16][2] -= 0.28
-
-    original = calculate_pose_controls(neutral)
-    controls = calculate_pose_controls(moved)
-    assert abs(controls["left_arm"]["ROT_X"] - original["left_arm"]["ROT_X"]) > 1.0
-    assert abs(controls["right_arm"]["ROT_X"] - original["right_arm"]["ROT_X"]) > 1.0
-    assert controls["left_arm"]["BEND_ANGLE_X"] > original["left_arm"]["BEND_ANGLE_X"]
-    assert controls["right_arm"]["BEND_ANGLE_X"] > original["right_arm"]["BEND_ANGLE_X"]
-
-
-def test_torso_and_head_use_their_own_native_landmark_axes():
-    neutral = standing_pose()
-    moved = standing_pose()
-    moved["world"][11][2] += 0.18
-    moved["world"][12][2] += 0.18
-    moved["world"][0][1] -= 0.10
-    moved["world"][7][1] += 0.04
-    moved["world"][8][1] -= 0.04
-
-    original = calculate_pose_controls(neutral)
-    controls = calculate_pose_controls(moved)
-    assert any(
-        abs(controls["body"][field] - original["body"][field]) > 1.0
-        for field in ("ROT_X", "ROT_Y", "ROT_Z")
-    )
-    assert (
-        abs(controls["head"]["ROT_X"] - original["head"]["ROT_X"]) > 1.0
-        or abs(controls["head"]["ROT_Z"] - original["head"]["ROT_Z"]) > 1.0
-    )
-
-
-def test_slow_subtle_motion_keeps_keyframes():
-    frames = [{"ROT_X": index * 0.05} for index in range(16)]
-    selected = _select_keyframes(frames, ("ROT_X",), fps=30, optimize=True)
-    assert len(selected) >= 4
-    assert selected[0] == 0
-    assert selected[-1] == 15
-    assert max(b - a for a, b in zip(selected, selected[1:])) <= 6
-
-
-def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
-    template_path = tmp_path / "template.miobject"
-    output_path = tmp_path / "captured.miobject"
-    make_template(template_path)
-
-    pose_a = standing_pose()
-    pose_b = standing_pose()
-    pose_b["world"][11][2] += 0.18
-    pose_b["world"][12][2] += 0.18
-    pose_b["world"][13][2] += 0.22
-    pose_b["world"][15][2] += 0.40
-    pose_b["world"][25][0] -= 0.16
-    pose_b["world"][27][0] -= 0.30
-    pose_b["world"][26][0] += 0.14
-    pose_b["world"][28][0] += 0.27
-    pose_b["world"][0][1] -= 0.10
-    pose_b["world"][7][1] += 0.04
-    pose_b["world"][8][1] -= 0.04
-
-    samples = [(0.0, pose_a), (0.5, pose_b), (1.0, pose_a)]
-    result = export_miobject(
-        template_path,
-        output_path,
-        samples,
-        fps=30,
-        duration_seconds=1.0,
-        optimize_keyframes=False,
-        smooth_motion=False,
-    )
-
-    exported = json.loads(output_path.read_text(encoding="utf-8"))
-    character = next(item for item in exported["timelines"] if item["type"] == "char")
-    assert character["default_values"] == {
-        "POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0
-    }
-    assert character["keyframes"] == {
-        "0": {"POS_X": 12.0, "POS_Y": 24.0, "POS_Z": 3.0, "ROT_Z": 0.0}
-    }
-
-    for part in ("body", "head", "left_arm", "right_arm", "left_leg", "right_leg"):
-        timeline = timeline_for(exported, part)
-        assert len(timeline["keyframes"]) == 31
-        assert "POS_X" not in timeline["keyframes"]["0"]
-        assert "POS_Y" not in timeline["keyframes"]["0"]
-
-    body = timeline_for(exported, "body")
-    first_body = body["keyframes"]["0"]
-    assert all(abs(first_body[field]) < 0.001 for field in (
-        "ROT_X", "ROT_Y", "ROT_Z"
-    ))
-    # Torso orientation uses rigid rotation; template bend deformation stays fixed.
-    assert first_body["BEND_ANGLE_X"] == -4.4
-    assert first_body["BEND_ANGLE_Y"] == 2.0
-    assert first_body["BEND_ANGLE_Z"] == 20.4
-    for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"):
-        assert len({frame[field] for frame in body["keyframes"].values()}) == 1
-
-    head = timeline_for(exported, "head")
-    first_head = head["keyframes"]["0"]
-    assert abs(first_head["ROT_X"]) < 0.001
-    assert abs(first_head["ROT_Z"]) < 0.001
-    assert len({frame["ROT_Y"] for frame in head["keyframes"].values()}) == 1
-
-    for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
-        first = timeline_for(exported, part)["keyframes"]["0"]
-        assert abs(first["ROT_X"]) < 0.001
-        assert abs(first["ROT_Z"]) < 0.001
-        assert abs(first["BEND_ANGLE_X"]) < 0.001
-
-    left_leg = timeline_for(exported, "left_leg")
-    right_leg = timeline_for(exported, "right_leg")
-    assert any(abs(frame["ROT_X"]) + abs(frame["ROT_Z"]) > 1.0
-               for frame in left_leg["keyframes"].values())
-    assert any(abs(frame["ROT_X"]) + abs(frame["ROT_Z"]) > 1.0
-               for frame in right_leg["keyframes"].values())
-
-    assert timeline_for(exported, "left_arm")["keyframes"]["0"]["POS_Z"] == -0.53
-    assert timeline_for(exported, "right_arm")["keyframes"]["0"]["POS_Z"] == -0.43
-    assert result["keyframe_counts"] == {
-        "body": 31,
-        "head": 31,
-        "left_arm": 31,
-        "right_arm": 31,
-        "left_leg": 31,
-        "right_leg": 31,
-    }
-    assert result["total_keyframes"] == 6 * 31
-
-
-def test_export_preserves_static_rig_properties_and_accessories(tmp_path):
-    template_path = tmp_path / "template.miobject"
-    output_path = tmp_path / "captured.miobject"
-    make_template(template_path)
-
-    export_miobject(
-        template_path,
-        output_path,
-        [(0.0, standing_pose()), (1.0, standing_pose())],
-        fps=30,
-        duration_seconds=1.0,
-        optimize_keyframes=False,
-        smooth_motion=False,
-    )
-
-    exported = json.loads(output_path.read_text(encoding="utf-8"))
-    assert timeline_for(exported, "head")["keyframes"]["0"]["TEXTURE_OBJ"] == "GREGOR_HEAD_TEXTURE"
-    assert timeline_for(exported, "left_arm")["keyframes"]["0"]["POS_Z"] == -0.53
-    assert timeline_for(exported, "right_arm")["keyframes"]["0"]["POS_Z"] == -0.43
-    assert timeline_for(exported, "hat")["keyframes"] == {}
-
-
-def test_export_rejects_empty_capture(tmp_path):
-    template_path = tmp_path / "template.miobject"
-    make_template(template_path)
-    with pytest.raises(MiobjectError):
-        export_miobject(template_path, tmp_path / "out.miobject", [], fps=30)
-
-
-def _rotate_pose_y(pose, angle_degrees, indices):
-    import math
-
-    rotated = {
-        "world": [list(point) for point in pose["world"]],
-        "image": pose.get("image", []),
-    }
-    angle = math.radians(angle_degrees)
-    cosine = math.cos(angle)
-    sine = math.sin(angle)
-    for index in indices:
-        x, y, z, *extra = rotated["world"][index]
-        rotated["world"][index] = [
-            cosine * x + sine * z,
-            y,
-            -sine * x + cosine * z,
-            *extra,
-        ]
-    return rotated
-
-
-def test_torso_forward_bow_uses_3d_relative_rotation():
-    neutral = standing_pose()
-    bowed = standing_pose()
-    for index in (11, 12):
-        bowed["world"][index][2] -= 0.42
-
-    controls = calculate_pose_controls(bowed, reference_pose=neutral)
-    assert abs(controls["body"]["ROT_X"]) > 8.0
-    assert abs(controls["body"]["ROT_Y"]) < 2.0
-    assert abs(controls["body"]["ROT_Z"]) < 2.0
-
-
-def test_torso_turn_uses_independent_yaw_without_fake_bow():
-    neutral = standing_pose()
-    rotated = _rotate_pose_y(neutral, 38.0, (11, 12, 23, 24))
-
-    controls = calculate_pose_controls(rotated, reference_pose=neutral)
-    assert abs(controls["body"]["ROT_Y"]) > 25.0
-    assert abs(controls["body"]["ROT_X"]) < 2.0
-    assert abs(controls["body"]["ROT_Z"]) < 2.0
-
-
-def test_arms_stay_local_when_the_torso_turns():
-    neutral = standing_pose()
-    rotated = _rotate_pose_y(
-        neutral, 42.0, (11, 12, 13, 14, 15, 16, 23, 24)
-    )
-
-    original = calculate_pose_controls(neutral, reference_pose=neutral)
-    controls = calculate_pose_controls(rotated, reference_pose=neutral)
-    for part in ("left_arm", "right_arm"):
-        for field in ("ROT_X", "ROT_Z", "BEND_ANGLE_X"):
-            assert abs(controls[part][field] - original[part][field]) < 1.5
-
-
-def test_leg_motion_no_longer_applies_amplitude_compression():
-    assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == 0.0
-    assert _shape_motion_delta("left_leg", "ROT_Z", 20.0) == 19.0
-    assert _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) == 18.5
-    assert _shape_motion_delta("body", "ROT_X", 20.0) == 20.0
-
-
-def test_robust_smoothing_rejects_single_frame_spike_but_keeps_motion():
-    filtered = _smooth([0.0, 0.0, 35.0, 0.0, 0.0], True, fps=30)
-    assert max(abs(value) for value in filtered) < 1.0
-    gradual = _smooth([0.0, 2.0, 4.0, 6.0, 8.0], True, fps=30)
-    assert gradual[-1] > 2.0
-
-
-
-def _rotate_pose_x(pose, angle_degrees, indices):
-    import math
-
-    rotated = {
-        "world": [list(point) for point in pose["world"]],
-        "image": pose.get("image", []),
-    }
-    angle = math.radians(angle_degrees)
-    cosine = math.cos(angle)
-    sine = math.sin(angle)
-    for index in indices:
-        x, y, z, *extra = rotated["world"][index]
-        rotated["world"][index] = [
-            x,
-            cosine * y - sine * z,
-            sine * y + cosine * z,
-            *extra,
-        ]
-    return rotated
-
-
-def test_segment_rotation_reconstructs_a_diagonal_3d_direction():
-    from math import cos, radians, sin, sqrt
-
-    local_right = 0.6
-    local_up = -0.3
-    local_forward = sqrt(0.55)
-    world_direction = (
-        local_right,
-        -local_up,
-        -local_forward,
-    )
-
-    rot_x, rot_z = _segment_rotation(
-        (0.0, 0.0, 0.0),
-        world_direction,
-        WORLD_REFERENCE_FRAME,
-    )
-
-    x = radians(rot_x)
-    z = radians(rot_z)
-    reconstructed = (
-        sin(z) * cos(x),
-        -cos(z) * cos(x),
-        sin(x),
-    )
-
-    assert reconstructed[0] == pytest.approx(local_right, abs=1e-6)
-    assert reconstructed[1] == pytest.approx(local_up, abs=1e-6)
-    assert reconstructed[2] == pytest.approx(local_forward, abs=1e-6)
-    assert -90.0 <= rot_x <= 90.0
-
-
-def test_torso_frame_falls_back_to_hip_width_when_shoulders_are_degenerate():
-    pose = standing_pose()
-    # Keep the shoulder midpoint fixed but make its width axis parallel to up.
-    pose["world"][11] = [0.0, -1.45, 0.0, 1.0, 1.0]
-    pose["world"][12] = [0.0, -1.05, 0.0, 1.0, 1.0]
-
-    frame = _torso_frame(pose)
-
-    assert frame is not None
-    assert frame[0] == pytest.approx((1.0, 0.0, 0.0), abs=1e-6)
-    assert frame[1] == pytest.approx((0.0, -1.0, 0.0), abs=1e-6)
-    assert frame[2] == pytest.approx((0.0, 0.0, -1.0), abs=1e-6)
-
-
-def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
-    neutral = standing_pose()
-    rotated = _rotate_pose_x(neutral, 100.0, (11, 12, 23, 24))
-
-    controls = calculate_pose_controls(rotated, reference_pose=neutral)
-
-    assert controls["body"]["ROT_X"] == pytest.approx(100.0, abs=0.01)
-    assert abs(controls["body"]["ROT_Y"]) < 0.01
-    assert abs(controls["body"]["ROT_Z"]) < 0.01
-
-
-
-def test_export_uses_an_explicit_neutral_pose_for_initial_raised_arms(tmp_path):
-    template_path = tmp_path / "template.miobject"
-    output_path = tmp_path / "captured.miobject"
-    make_template(template_path)
-
-    neutral = standing_pose()
-    raised = standing_pose()
-    # Lift both elbows and wrists above shoulder height in the first frame.
-    raised["world"][13][1] = -1.48
-    raised["world"][15][1] = -1.88
-    raised["world"][14][1] = -1.48
-    raised["world"][16][1] = -1.88
-
-    export_miobject(
-        template_path,
-        output_path,
-        [(0.0, raised), (1.0, neutral)],
-        fps=30,
-        duration_seconds=1.0,
-        optimize_keyframes=False,
-        smooth_motion=False,
-        calibration_pose=neutral,
-    )
-
-    exported = json.loads(output_path.read_text(encoding="utf-8"))
-    left_arm = timeline_for(exported, "left_arm")["keyframes"]
-    right_arm = timeline_for(exported, "right_arm")["keyframes"]
-
-    assert abs(left_arm["0"]["ROT_Z"]) > 30.0
-    assert abs(right_arm["0"]["ROT_Z"]) > 30.0
-    assert abs(left_arm["30"]["ROT_Z"]) < 1.0
-    assert abs(right_arm["30"]["ROT_Z"]) < 1.0
-
-
-
-def test_torso_frame_uses_previous_heading_when_both_widths_collapse():
-    neutral = standing_pose()
-    previous = _torso_frame(neutral)
-    assert previous is not None
-
-    collapsed = standing_pose()
-    collapsed["world"][11][0] = -0.01
-    collapsed["world"][12][0] = 0.01
-    collapsed["world"][23][0] = -0.01
-    collapsed["world"][24][0] = 0.01
-
-    assert _torso_frame(collapsed) is None
-    recovered = _torso_frame(collapsed, fallback_frame=previous)
-    assert recovered is not None
-    assert recovered[0] == pytest.approx(previous[0], abs=1e-6)
-
-    controls = calculate_pose_controls(
-        collapsed,
-        reference_pose=neutral,
-        previous_frame=previous,
-    )
-    assert {"body", "head", "left_arm", "right_arm"}.issubset(controls)
-
-
-def test_export_keeps_torso_and_arm_channels_during_profile_width_collapse(tmp_path):
-    template_path = tmp_path / "template.miobject"
-    output_path = tmp_path / "captured.miobject"
-    make_template(template_path)
-
-    neutral = standing_pose()
-    collapsed = standing_pose()
-    collapsed["world"][11][0] = -0.01
-    collapsed["world"][12][0] = 0.01
-    collapsed["world"][23][0] = -0.01
-    collapsed["world"][24][0] = 0.01
-
-    export_miobject(
-        template_path,
-        output_path,
-        [(0.0, neutral), (1 / 30, collapsed), (2 / 30, collapsed), (3 / 30, neutral)],
-        fps=30,
-        duration_seconds=0.1,
-        optimize_keyframes=False,
-        calibration_pose=neutral,
-    )
-    exported = json.loads(output_path.read_text(encoding="utf-8"))
-    for part in ("body", "head", "left_arm", "right_arm"):
-        keys = timeline_for(exported, part)["keyframes"]
-        assert "1" in keys
-        assert "2" in keys
-
-
-def test_load_template_accepts_user_mineimator_project_fixture():
-    fixture = (
-        __import__("pathlib").Path(__file__).parent
-        / "fixtures" / "Mineimator_CB_1.0.0" / "Humanoid_Base.miproject"
-    )
-    data = load_template(fixture)
-
-    assert data["format"] == 35
-    assert "project" not in data
-    assert "render" not in data
-    assert "background" not in data
-    assert all(
-        not item.get("keyframes")
-        for item in data["timelines"]
-        if item.get("type") == "bodypart"
-    )
+ ÕÈZ®Ëkºwµçkz»§Â+a…æþ
+Þ§ûZŠWè­û¥–‹­¦ëXœÊš\œÝÈ”“ÕÖ—JHŒBˆ\ÜÙ\XœÊš\œÝÈ”“ÕÖˆ—JHŒBˆ\ÜÙ\XœÊš\œÝÈ‘S‘ÐS‘ÓWÖ—JHŒB‚ˆYÛYÈH[Y[[™WÙ›ÜŠ^ÜY›YÛYÈŠBˆšYÚÛYÈH[Y[[™WÙ›ÜŠ^ÜYœšYÚÛYÈŠBˆ\ÜÙ\[žJXœÊœ˜[YVÈ”“ÕÖ—JH
+ÈXœÊœ˜[YVÈ”“ÕÖˆ—JHˆKŒˆ›Üˆœ˜[YH[ˆYÛYÖÈšÙ^Yœ˜[Y\È—K˜[Y\Ê
+JBˆ\ÜÙ\[žJXœÊœ˜[YVÈ”“ÕÖ—JH
+ÈXœÊœ˜[YVÈ”“ÕÖˆ—JHˆKŒˆ›Üˆœ˜[YH[ˆšYÚÛYÖÈšÙ^Yœ˜[Y\È—K˜[Y\Ê
+JB‚ˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜY›YØ\›HŠVÈšÙ^Yœ˜[Y\È—VÈŒ—VÈ”Ô×Öˆ—HOHLLÂˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜYœšYÚØ\›HŠVÈšÙ^Yœ˜[Y\È—VÈŒ—VÈ”Ô×Öˆ—HOHLÂˆ\ÜÙ\™\Ý[ÈšÙ^Yœ˜[YWØÛÝ[È—HOHÂˆ˜›ÙHŽˆÌKˆšXYŽˆÌKˆ›YØ\›HŽˆÌKˆœšYÚØ\›HŽˆÌKˆ›YÛYÈŽˆÌKˆœšYÚÛYÈŽˆÌKˆBˆ\ÜÙ\™\Ý[ÈÝ[ÚÙ^Yœ˜[Y\È—HOHˆ
+ˆÌB‚‚™Yˆ\ÝÙ^ÜÜ™\Ù\™\×ÜÝ]X×ÜšY×Ü›Ü\Y\×Ø[™ØXØÙ\ÜÛÜšY\Ê\Ü]
+N‚ˆ[\]WÜ]H\Ü]È[\]K›Z[Øš™XÝ‚ˆÝ]]Ü]H\Ü]È˜Ø\\™Y›Z[Øš™XÝ‚ˆXZÙWÝ[\]J[\]WÜ]
+B‚ˆ^ÜÛZ[Øš™XÝ
+ˆ[\]WÜ]ˆÝ]]Ü]ˆÊŒÝ[™[™×ÜÜÙJ
+JK
+KŒÝ[™[™×ÜÜÙJ
+JWKˆœÏLÌˆ\˜][Û—ÜÙXÛÛ™ÏLKŒˆÜ[Z^™WÚÙ^Yœ˜[Y\ÏQ˜[ÙKˆÛ[ÛÝÛ[Ý[ÛQ˜[ÙKˆ
+B‚ˆ^ÜYHœÛÛ‹›ØYÊÝ]]Ü]œ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJBˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜYšXYŠVÈšÙ^Yœ˜[Y\È—VÈŒ—VÈ•VT‘WÓÐ’ˆ—HOH‘Ô‘QÓÔ—ÒPQÕVT‘H‚ˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜY›YØ\›HŠVÈšÙ^Yœ˜[Y\È—VÈŒ—VÈ”Ô×Öˆ—HOHLLÂˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜYœšYÚØ\›HŠVÈšÙ^Yœ˜[Y\È—VÈŒ—VÈ”Ô×Öˆ—HOHLÂˆ\ÜÙ\[Y[[™WÙ›ÜŠ^ÜYš]ŠVÈšÙ^Yœ˜[Y\È—HOHßB‚‚™Yˆ\ÝÙ^ÜÜ™Z™XÝ×Ù[\WØØ\\™J\Ü]
+N‚ˆ[\]WÜ]H\Ü]È[\]K›Z[Øš™XÝ‚ˆXZÙWÝ[\]J[\]WÜ]
+BˆÚ]]\Ýœ˜Z\Ù\ÊZ[Øš™XÝ\œ›ÜŠN‚ˆ^ÜÛZ[Øš™XÝ
+[\]WÜ]\Ü]È›Ý]›Z[Øš™XÝ‹×KœÏLÌ
+B‚‚™YˆÜ›Ý]WÜÜÙWÞJÜÙK[™ÛWÙYÜ™Y\Ë[™XÙ\ÊN‚ˆ[\ÜX]‚ˆ›Ý]YHÂˆÛÜ›ŽˆÛ\Ý
+Ú[
+H›ÜˆÚ[[ˆÜÙVÈÛÜ›—WKˆš[XYÙHŽˆÜÙK™Ù]
+š[XYÙH‹×JKˆBˆ[™ÛHHX]œ˜YX[œÊ[™ÛWÙYÜ™Y\ÊBˆÛÜÚ[™HHX]˜ÛÜÊ[™ÛJBˆÚ[™HHX]œÚ[Š[™ÛJBˆ›Üˆ[™^[ˆ[™XÙ\Î‚ˆK‹
+™^˜HH›Ý]YÈÛÜ›—VÚ[™^Bˆ›Ý]YÈÛÜ›—VÚ[™^HHÂˆÛÜÚ[™H
+ˆ
+ÈÚ[™H
+ˆ‹ˆKˆ\Ú[™H
+ˆ
+ÈÛÜÚ[™H
+ˆ‹ˆ
+™^˜KˆBˆ™]\›ˆ›Ý]Y‚‚™Yˆ\ÝÝÜœÛ×Ù›ÜØ\™Ø›Ý×Ý\Ù\×ÌÙÜ™[]]™WÜ›Ý][ÛŠ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ›ÝÙYHÝ[™[™×ÜÜÙJ
+Bˆ›Üˆ[™^[ˆ
+LKLŠN‚ˆ›ÝÙYÈÛÜ›—VÚ[™^VÌ—HOH‚‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊ›ÝÙY™Y™\™[˜ÙWÜÜÙO[™]]˜[
+Bˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖ—JHˆŒˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖH—JH‹Œˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖˆ—JH‹Œ‚‚™Yˆ\ÝÝÜœÛ×Ý\›—Ý\Ù\×Ú[™\[™[ÞX]×ÝÚ]Ý]Ù˜ZÙWØ›ÝÊ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ›Ý]YHÜ›Ý]WÜÜÙWÞJ™]]˜[ÎŒ
+LKL‹ŒË
+JB‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊ›Ý]Y™Y™\™[˜ÙWÜÜÙO[™]]˜[
+Bˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖH—JHˆKŒˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖ—JH‹Œˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖˆ—JH‹Œ‚‚™Yˆ\ÝØ\›\×ÜÝ^WÛØØ[ÝÚ[—ÝWÝÜœÛ×Ý\›œÊ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ›Ý]YHÜ›Ý]WÜÜÙWÞJˆ™]]˜[‹Œ
+LKL‹LËMMKM‹ŒË
+Bˆ
+B‚ˆÜšYÚ[˜[HØ[Ý[]WÜÜÙWØÛÛ›ÛÊ™]]˜[™Y™\™[˜ÙWÜÜÙO[™]]˜[
+BˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊ›Ý]Y™Y™\™[˜ÙWÜÜÙO[™]]˜[
+Bˆ›Üˆ\[ˆ
+›YØ\›H‹œšYÚØ\›HŠN‚ˆ›ÜˆšY[[ˆ
+”“ÕÖ‹”“ÕÖˆ‹‘S‘ÐS‘ÓWÖŠN‚ˆ\ÜÙ\XœÊÛÛ›ÛÖÜ\VÙšY[HHÜšYÚ[˜[Ü\VÙšY[JHKB‚‚™Yˆ\ÝÛY×Û[Ý[Û—Û›×ÛÛ™Ù\—Ø\Y\×Ø[\]YWØÛÛ\™\ÜÚ[ÛŠ
+N‚ˆ\ÜÙ\ÜÚ\WÛ[Ý[Û—Ù[J›YÛYÈ‹”“ÕÖˆ‹JHOHŒˆ\ÜÙ\ÜÚ\WÛ[Ý[Û—Ù[J›YÛYÈ‹”“ÕÖˆ‹ŒŒ
+HOHNKŒˆ\ÜÙ\ÜÚ\WÛ[Ý[Û—Ù[JœšYÚÛYÈ‹‘S‘ÐS‘ÓWÖ‹ŒŒ
+HOHNBˆ\ÜÙ\ÜÚ\WÛ[Ý[Û—Ù[J˜›ÙH‹”“ÕÖ‹ŒŒ
+HOHŒŒ‚‚™Yˆ\ÝÜ›Ø\ÝÜÛ[ÛÝ[™×Ü™Z™XÝ×ÜÚ[™ÛWÙœ˜[YWÜÜZÙWØ]ÚÙY\×Û[Ý[ÛŠ
+N‚ˆš[\™YHÜÛ[ÛÝ
+ÌŒŒÍKŒŒŒKYKœÏLÌ
+Bˆ\ÜÙ\X^
+XœÊ˜[YJH›Üˆ˜[YH[ˆš[\™Y
+HKŒˆÜ˜YX[HÜÛ[ÛÝ
+ÌŒ‹ŒŒ‹ŒŒKYKœÏLÌ
+Bˆ\ÜÙ\Ü˜YX[ËLWHˆ‹Œ‚‚‚™YˆÜ›Ý]WÜÜÙWÞ
+ÜÙK[™ÛWÙYÜ™Y\Ë[™XÙ\ÊN‚ˆ[\ÜX]‚ˆ›Ý]YHÂˆÛÜ›ŽˆÛ\Ý
+Ú[
+H›ÜˆÚ[[ˆÜÙVÈÛÜ›—WKˆš[XYÙHŽˆÜÙK™Ù]
+š[XYÙH‹×JKˆBˆ[™ÛHHX]œ˜YX[œÊ[™ÛWÙYÜ™Y\ÊBˆÛÜÚ[™HHX]˜ÛÜÊ[™ÛJBˆÚ[™HHX]œÚ[Š[™ÛJBˆ›Üˆ[™^[ˆ[™XÙ\Î‚ˆK‹
+™^˜HH›Ý]YÈÛÜ›—VÚ[™^Bˆ›Ý]YÈÛÜ›—VÚ[™^HHÂˆˆÛÜÚ[™H
+ˆHHÚ[™H
+ˆ‹ˆÚ[™H
+ˆH
+ÈÛÜÚ[™H
+ˆ‹ˆ
+™^˜KˆBˆ™]\›ˆ›Ý]Y‚‚™Yˆ\ÝÜÙYÛY[Ü›Ý][Û—Ü™XÛÛœÝXÝ×ØWÙXYÛÛ˜[ÌÙÙ\™XÝ[ÛŠ
+N‚ˆœ›ÛHX][\ÜÛÜË˜YX[œËÚ[‹Ü\‚ˆØØ[ÜšYÚH‚ˆØØ[Ý\HLŒÂˆØØ[Ù›ÜØ\™HÜ\
+MJBˆÛÜ›Ù\™XÝ[ÛˆH
+ˆØØ[ÜšYÚˆ[ØØ[Ý\ˆ[ØØ[Ù›ÜØ\™ˆ
+B‚ˆ›ÝÞ›ÝÞˆHÜÙYÛY[Ü›Ý][ÛŠˆ
+ŒŒŒ
+KˆÛÜ›Ù\™XÝ[Û‹ˆÓÔ“Ô‘Q‘T‘SÑWÑ”SQKˆ
+B‚ˆH˜YX[œÊ›ÝÞ
+BˆˆH˜YX[œÊ›ÝÞŠBˆ™XÛÛœÝXÝYH
+ˆÚ[ŠŠH
+ˆÛÜÊ
+KˆXÛÜÊŠH
+ˆÛÜÊ
+KˆÚ[Š
+Kˆ
+B‚ˆ\ÜÙ\™XÛÛœÝXÝYÌHOH]\Ý˜\›Þ
+ØØ[ÜšYÚXœÏLYKMŠBˆ\ÜÙ\™XÛÛœÝXÝYÌWHOH]\Ý˜\›Þ
+ØØ[Ý\XœÏLYKMŠBˆ\ÜÙ\™XÛÛœÝXÝYÌ—HOH]\Ý˜\›Þ
+ØØ[Ù›ÜØ\™XœÏLYKMŠBˆ\ÜÙ\NLŒH›ÝÞHLŒ‚‚™Yˆ\ÝÝÜœÛ×Ùœ˜[YWÙ˜[×Ø˜XÚ×Ý×Ú\ÝÚYÝÚ[—ÜÚÝ[\œ×Ø\™WÙYÙ[™\˜]J
+N‚ˆÜÙHHÝ[™[™×ÜÜÙJ
+BˆÈÙY\HÚÝ[\ˆZYÚ[š^Y]XZÙH]ÈÚY^\È\˜[[È\‚ˆÜÙVÈÛÜ›—VÌLWHHÌŒLKKŒKŒKŒBˆÜÙVÈÛÜ›—VÌL—HHÌŒLKŒKŒKŒKŒB‚ˆœ˜[YHHÝÜœÛ×Ùœ˜[YJÜÙJB‚ˆ\ÜÙ\œ˜[YH\È›Ý›Û™Bˆ\ÜÙ\œ˜[YVÌHOH]\Ý˜\›Þ
+
+KŒŒŒ
+KXœÏLYKMŠBˆ\ÜÙ\œ˜[YVÌWHOH]\Ý˜\›Þ
+
+ŒLKŒŒ
+KXœÏLYKMŠBˆ\ÜÙ\œ˜[YVÌ—HOH]\Ý˜\›Þ
+
+ŒŒLKŒ
+KXœÏLYKMŠB‚‚™Yˆ\ÝÝÜœÛ×Ü›Ý][Û—Ú\×Û›ÝØ\YšXÚX[WØÛ\YØ]ÎWÙYÜ™Y\Ê
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ›Ý]YHÜ›Ý]WÜÜÙWÞ
+™]]˜[LŒ
+LKL‹ŒË
+JB‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊ›Ý]Y™Y™\™[˜ÙWÜÜÙO[™]]˜[
+B‚ˆ\ÜÙ\ÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖ—HOH]\Ý˜\›Þ
+LŒXœÏLŒJBˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖH—JHŒBˆ\ÜÙ\XœÊÛÛ›ÛÖÈ˜›ÙH—VÈ”“ÕÖˆ—JHŒB‚‚‚™Yˆ\ÝÙ^ÜÝ\Ù\×Ø[—Ù^XÚ]Û™]]˜[ÜÜÙWÙ›Ü—Ú[š]X[Ü˜Z\ÙYØ\›\Ê\Ü]
+N‚ˆ[\]WÜ]H\Ü]È[\]K›Z[Øš™XÝ‚ˆÝ]]Ü]H\Ü]È˜Ø\\™Y›Z[Øš™XÝ‚ˆXZÙWÝ[\]J[\]WÜ]
+B‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ˜Z\ÙYHÝ[™[™×ÜÜÙJ
+BˆÈY›Ý[›ÝÜÈ[™Üš\ÝÈX›Ý™HÚÝ[\ˆZYÚ[ˆHš\œÝœ˜[YK‚ˆ˜Z\ÙYÈÛÜ›—VÌL×VÌWHHLKˆ˜Z\ÙYÈÛÜ›—VÌMWVÌWHHLKŽˆ˜Z\ÙYÈÛÜ›—VÌMVÌWHHLKˆ˜Z\ÙYÈÛÜ›—VÌM—VÌWHHLKŽ‚ˆ^ÜÛZ[Øš™XÝ
+ˆ[\]WÜ]ˆÝ]]Ü]ˆÊŒ˜Z\ÙY
+K
+KŒ™]]˜[
+WKˆœÏLÌˆ\˜][Û—ÜÙXÛÛ™ÏLKŒˆÜ[Z^™WÚÙ^Yœ˜[Y\ÏQ˜[ÙKˆÛ[ÛÝÛ[Ý[ÛQ˜[ÙKˆØ[Xœ˜][Û—ÜÜÙO[™]]˜[ˆ
+B‚ˆ^ÜYHœÛÛ‹›ØYÊÝ]]Ü]œ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJBˆYØ\›HH[Y[[™WÙ›ÜŠ^ÜY›YØ\›HŠVÈšÙ^Yœ˜[Y\È—BˆšYÚØ\›HH[Y[[™WÙ›ÜŠ^ÜYœšYÚØ\›HŠVÈšÙ^Yœ˜[Y\È—B‚ˆ\ÜÙ\XœÊYØ\›VÈŒ—VÈ”“ÕÖˆ—JHˆÌŒˆ\ÜÙ\XœÊšYÚØ\›VÈŒ—VÈ”“ÕÖˆ—JHˆÌŒˆ\ÜÙ\XœÊYØ\›VÈŒÌ—VÈ”“ÕÖˆ—JHKŒˆ\ÜÙ\XœÊšYÚØ\›VÈŒÌ—VÈ”“ÕÖˆ—JHKŒ‚‚‚™Yˆ\ÝÝÜœÛ×Ùœ˜[YWÝ\Ù\×Ü™]š[Ý\×ÚXY[™×ÝÚ[—Ø›ÝÝÚY×ØÛÛ\ÙJ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ™]š[Ý\ÈHÝÜœÛ×Ùœ˜[YJ™]]˜[
+Bˆ\ÜÙ\™]š[Ý\È\È›Ý›Û™B‚ˆÛÛ\ÙYHÝ[™[™×ÜÜÙJ
+BˆÛÛ\ÙYÈÛÜ›—VÌLWVÌHHLŒBˆÛÛ\ÙYÈÛÜ›—VÌL—VÌHHŒBˆÛÛ\ÙYÈÛÜ›—VÌŒ×VÌHHLŒBˆÛÛ\ÙYÈÛÜ›—VÌVÌHHŒB‚ˆ\ÜÙ\ÝÜœÛ×Ùœ˜[YJÛÛ\ÙY
+H\È›Û™Bˆ™XÛÝ™\™YHÝÜœÛ×Ùœ˜[YJÛÛ\ÙY˜[˜XÚ×Ùœ˜[YO\™]š[Ý\ÊBˆ\ÜÙ\™XÛÝ™\™Y\È›Ý›Û™Bˆ\ÜÙ\™XÛÝ™\™YÌHOH]\Ý˜\›Þ
+™]š[Ý\ÖÌKXœÏLYKMŠB‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊˆÛÛ\ÙYˆ™Y™\™[˜ÙWÜÜÙO[™]]˜[ˆ™]š[Ý\×Ùœ˜[YO\™]š[Ý\Ëˆ
+Bˆ\ÜÙ\È˜›ÙH‹šXY‹›YØ\›H‹œšYÚØ\›HŸKš\ÜÝXœÙ]
+ÛÛ›ÛÊB‚‚™Yˆ\ÝÙ^ÜÚÙY\×ÝÜœÛ×Ø[™Ø\›WØÚ[›™[×Ù\š[™×Ü›Ùš[WÝÚYØÛÛ\ÙJ\Ü]
+N‚ˆ[\]WÜ]H\Ü]È[\]K›Z[Øš™XÝ‚ˆÝ]]Ü]H\Ü]È˜Ø\\™Y›Z[Øš™XÝ‚ˆXZÙWÝ[\]J[\]WÜ]
+B‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+BˆÛÛ\ÙYHÝ[™[™×ÜÜÙJ
+BˆÛÛ\ÙYÈÛÜ›—VÌLWVÌHHLŒBˆÛÛ\ÙYÈÛÜ›—VÌL—VÌHHŒBˆÛÛ\ÙYÈÛÜ›—VÌŒ×VÌHHLŒBˆÛÛ\ÙYÈÛÜ›—VÌVÌHHŒB‚ˆ^ÜÛZ[Øš™XÝ
+ˆ[\]WÜ]ˆÝ]]Ü]ˆÊŒ™]]˜[
+K
+HÈÌÛÛ\ÙY
+K
+ˆÈÌÛÛ\ÙY
+K
+ÈÈÌ™]]˜[
+WKˆœÏLÌˆ\˜][Û—ÜÙXÛÛ™ÏLŒKˆÜ[Z^™WÚÙ^Yœ˜[Y\ÏQ˜[ÙKˆØ[Xœ˜][Û—ÜÜÙO[™]]˜[ˆ
+Bˆ^ÜYHœÛÛ‹›ØYÊÝ]]Ü]œ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJBˆ›Üˆ\[ˆ
+˜›ÙH‹šXY‹›YØ\›H‹œšYÚØ\›HŠN‚ˆÙ^\ÈH[Y[[™WÙ›ÜŠ^ÜY\
+VÈšÙ^Yœ˜[Y\È—Bˆ\ÜÙ\ŒHˆ[ˆÙ^\Âˆ\ÜÙ\Œˆˆ[ˆÙ^\Â‚‚™Yˆ\ÝÛØYÝ[\]WØXØÙ\×Ý\Ù\—ÛZ[™Z[X]Ü—Ü›Ú™XÝÙš^\™J
+N‚ˆš^\™HH
+ˆ×Ú[\Ü×Êœ]XˆŠK”]
+×Ùš[W×ÊKœ\™[ˆÈ™š^\™\ÈˆÈ“Z[™Z[X]Ü—ÐÐ—ÌKŒŒˆÈ’[X[›ÚYÐ˜\ÙK›Z\›Ú™XÝ‚ˆ
+Bˆ]HHØYÝ[\]Jš^\™JB‚ˆ\ÜÙ\]VÈ™›Ü›X]—HOHÍBˆ\ÜÙ\œ›Ú™XÝˆ›Ý[ˆ]Bˆ\ÜÙ\œ™[™\ˆˆ›Ý[ˆ]Bˆ\ÜÙ\˜˜XÚÙÜ›Ý[™ˆ›Ý[ˆ]Bˆ\ÜÙ\[
+ˆ›Ý][K™Ù]
+šÙ^Yœ˜[Y\ÈŠBˆ›Üˆ][H[ˆ]VÈ[Y[[™\È—BˆYˆ][K™Ù]
+\HŠHOH˜›Ù\\‚ˆ
+B‚‚‚™Yˆ\ÝÛ[Ý[Û˜™\ÚXYØ^\×ÙÙ\×Û›ÝÝ\›—Ù˜ZÙWÙ˜XÙWÙÙ[ÛY]žWÚ[×ÚXYÜ›Ý][ÛŠ
+N‚ˆÜÙHHÝ[™[™×ÜÜÙJ
+BˆÜÙVÈÛÜ›—VÌHHÌŒLKKLKŒKŒKŒBˆÜÙVÈÛÜ›—VÍ×HHÌKŒLKKŒKŒKŒBˆÜÙVÈÛÜ›—VÎHHËLKŒLKKŒKŒKŒBˆÜÙVÈšXYØ^\È—HHÂˆ›™XÚÈŽˆÌŒLK‹ŒKˆšXYŽˆÌŒL‹ŒŒKˆ˜ÛÛ™šY[˜ÙHŽˆKŒˆB‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊÜÙK™Y™\™[˜ÙWÜÜÙO\ÜÙJB‚ˆ\ÜÙ\ÛÛ›ÛÖÈšXY—VÈ”“ÕÖ—HOH]\Ý˜\›Þ
+ŒXœÏLYKMJBˆ\ÜÙ\ÛÛ›ÛÖÈšXY—VÈ”“ÕÖˆ—HOH]\Ý˜\›Þ
+ŒXœÏLYKMJB‚‚™Yˆ\ÝÛ[Ý[Û˜™\ÚXYØ^\×Ù]XÝ×ÚXYÝ[Ü™[]]™WÝ×ÝÜœÛÊ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ[YHÝ[™[™×ÜÜÙJ
+Bˆ™]]˜[ÈšXYØ^\È—HHÂˆ›™XÚÈŽˆÌŒLK‹ŒKˆšXYŽˆÌŒL‹ŒŒKˆ˜ÛÛ™šY[˜ÙHŽˆKŒˆBˆ[YÈšXYØ^\È—HHÂˆ›™XÚÈŽˆÌŒLK‹ŒKˆšXYŽˆÌŒL‹ŒLŒNKˆ˜ÛÛ™šY[˜ÙHŽˆKŒˆB‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊ[Y™Y™\™[˜ÙWÜÜÙO[™]]˜[
+B‚ˆ\ÜÙ\XœÊÛÛ›ÛÖÈšXY—VÈ”“ÕÖ—JHˆKŒˆ\ÜÙ\XœÊÛÛ›ÛÖÈšXY—VÈ”“ÕÖˆ—JHKŒ‚‚™Yˆ\ÝÚÛ™YWØ™[™ÚÙY\×Ü™]š[Ý\×Ù\™XÝ[Û—ÝÚ[—ÜØYÚ][ÙÙ[ÛY]žWÚ\×Ø[XšYÝ[Ý\Ê
+N‚ˆÝ\H
+KŒŒŒ
+Bˆ›Ú[H
+ŒŒŒ
+Bˆ[™H
+ŒKŒŒ
+B‚ˆÜÚ]]™HHØ™[™Ø[™ÛJˆÝ\›Ú[[™ÓÔ“Ô‘Q‘T‘SÑWÑ”SQK™]š[Ý\×Ý˜[YOMKŒˆ
+Bˆ™YØ]]™HHØ™[™Ø[™ÛJˆÝ\›Ú[[™ÓÔ“Ô‘Q‘T‘SÑWÑ”SQK™]š[Ý\×Ý˜[YOKMKŒˆ
+B‚ˆ\ÜÙ\ÜÚ]]™HOH]\Ý˜\›Þ
+LŒ
+Bˆ\ÜÙ\™YØ]]™HOH]\Ý˜\›Þ
+NLŒ
+B‚‚™Yˆ\ÝÚÛ™YWØ™[™Ý\Ù\×ØÛX\—ÙÙ[ÛY]žWÛÝ™\—Ü™]š[Ý\×Ù\™XÝ[ÛŠ
+N‚ˆ™]]˜[HÝ[™[™×ÜÜÙJ
+Bˆ›ÜØ\™HÝ[™[™×ÜÜÙJ
+Bˆ›ÜØ\™ÈÛÜ›—VÌWVÌ—HHLŒBˆ™]š[Ý\ÈHÈ›YÛYÈŽˆÈ‘S‘ÐS‘ÓWÖŽˆMŒ_B‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊˆ›ÜØ\™ˆ™Y™\™[˜ÙWÜÜÙO[™]]˜[ˆ™]š[Ý\×ØÛÛ›ÛÏ\™]š[Ý\Ëˆ
+B‚ˆ\ÜÙ\ÛÛ›ÛÖÈ›YÛYÈ—VÈ‘S‘ÐS‘ÓWÖ—HˆŒ‚‚™Yˆ\ÝØZ[Ý˜[Y][Û—Ü›Ú™XÝÜ™\Ù\™\×ÙY]Ü—ÜØÙ[™WØ[™Ú[œÙ\×Ø[š[X][ÛŠ\Ü]
+N‚ˆœ›ÛH[ØØ\Ø\˜[Y][Ûˆ[\ÜZ[Ý˜[Y][Û—Ü›Ú™XÝ‚ˆš^\™HH
+ˆ×Ú[\Ü×Êœ]XˆŠK”]
+×Ùš[W×ÊKœ\™[ˆÈ™š^\™\ÈˆÈ“Z[™Z[X]Ü—ÐÐ—ÌKŒŒˆÈ’[X[›ÚYÐ˜\ÙK›Z\›Ú™XÝ‚ˆ
+Bˆ\ÜÙ]Ý[\]HH\Ü]È˜\ÜÙ]Ý[\]K›Z[Øš™XÝ‚ˆ[š[X]YH\Ü]È˜[š[X]Y›Z[Øš™XÝ‚ˆ˜[Y][Û—Ü›Ú™XÝH\Ü]È”Ý]™WÕ˜[Y][Û‹›Z\›Ú™XÝ‚ˆXZÙWÝ[\]J\ÜÙ]Ý[\]JBˆ^ÜÛZ[Øš™XÝ
+ˆ\ÜÙ]Ý[\]Kˆ[š[X]YˆÊŒÝ[™[™×ÜÜÙJ
+JK
+KŒÝ[™[™×ÜÜÙJ
+JWKˆœÏLÌˆ\˜][Û—ÜÙXÛÛ™ÏLKŒˆÜ[Z^™WÚÙ^Yœ˜[Y\ÏQ˜[ÙKˆ
+B‚ˆ™\Ý[HZ[Ý˜[Y][Û—Ü›Ú™XÝ
+ˆš^\™Kˆ[š[X]Yˆ˜[Y][Û—Ü›Ú™XÝˆœÏLÌˆ
+Bˆ›Ú™XÝHœÛÛ‹›ØYÊ˜[Y][Û—Ü›Ú™XÝœ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJB‚ˆ\ÜÙ\›Ú™XÝÈ˜Ü™X]YÚ[ˆ—HOHŒ‹ŒŒˆÛÛ[][š]HZ[KŒŒ‚ˆ\ÜÙ\›Ú™XÝÈœ›Ú™XÝ—VÈ[\È—HOHÌˆ\ÜÙ\›Ú™XÝÈœ™[™\ˆ—HOHœÛÛ‹›ØYÊš^\™Kœ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJVÈœ™[™\ˆ—Bˆ\ÜÙ\›Ú™XÝÈ˜˜XÚÙÜ›Ý[™—HOHœÛÛ‹›ØYÊš^\™Kœ™XYÝ^
+[˜ÛÙ[™ÏH]‹NŠJVÈ˜˜XÚÙÜ›Ý[™—Bˆ\ÜÙ\™\Ý[È˜[š[X]YÜ\È—HOH‚ˆ\ÜÙ\™\Ý[È[Y[[™WØÛÝ[—HOH[Š›Ú™XÝÈ[Y[[™\È—JBˆ\ÜÙ\[žJˆ][K™Ù]
+›[Ù[Ü\Û˜[YHŠHOH›YØ\›Hˆ[™][K™Ù]
+šÙ^Yœ˜[Y\ÈŠBˆ›Üˆ][H[ˆ›Ú™XÝÈ[Y[[™\È—Bˆ
+B

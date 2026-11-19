@@ -50,373 +50,163 @@ class MiobjectError(ValueError):
 
 
 def load_template(path: str | Path) -> dict[str, Any]:
-    template_path = Path(path)
-    try:
-        with template_path.open("r", encoding="utf-8-sig") as source:
-            data = json.load(source)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise MiobjectError(f"No se pudo leer el archivo .miobject: {exc}") from exc
-    # A Mine-imator project is also a valid source rig. Strip editor-only
-    # project/render/background settings before emitting a .miobject asset.
-    if isinstance(data, dict):
-        data = dict(data)
-        for editor_section in ("project", "render", "background"):
-            data.pop(editor_section, None)
-    validate_template(data)
-    return data
+    template_path = Path(path)ÕÈZ®Ëkºwµçkz»§Â+a…æþ
+Þ§ûZŠWè­û¥–‹­¦ëXZ\ÙHZ[Øš™XÝ\œ›ÜŠ‘[\˜Ú]›È›ÈÛÛY[™HH\ÝHH\Ý\È	Ý[Y[[™\ÉËˆŠBˆ[\]\ÈH]K™Ù]
+[\]\È‹×JBˆ\×Ú[X[ˆH[žJˆ\Ú[œÝ[˜ÙJ][KXÝ
+Bˆ[™\Ú[œÝ[˜ÙJ][K™Ù]
+›[Ù[ŠKXÝ
+Bˆ[™ÝŠ][VÈ›[Ù[—K™Ù]
+›˜[YH‹ˆŠJK›ÝÙ\Š
+HOHš[X[ˆ‚ˆ›Üˆ][H[ˆ[\]\Âˆ
+BˆYˆ›Ý\×Ú[X[Ž‚ˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠ“H[[HX™HÛÛ[™\ˆ[ˆ\œÛÛ˜Z™H[X[›ÈHZ[™KZ[X]Ü‹ˆŠBˆ›Ý[™HÂˆ][K™Ù]
+›[Ù[Ü\Û˜[YHŠBˆ›Üˆ][H[ˆ]VÈ[Y[[™\È—BˆYˆ\Ú[œÝ[˜ÙJ][KXÝ
+H[™][K™Ù]
+\HŠHOH˜›Ù\\‚ˆBˆZ\ÜÚ[™ÈH‘TURT‘QÔT•ÈH›Ý[™ˆYˆZ\ÜÚ[™Î‚ˆ˜[Y\ÈH‹‹š›Ú[ŠÛÜY
+Z\ÜÚ[™ÊJBˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠˆ‘˜[[ˆ\Ý\ÈÛÜœÜ˜[\È™XÙ\Ø\šX\È[ˆH[[NˆÛ˜[Y\ßHŠB‚‚™YˆÙš\œÝÚÙ^Yœ˜[YWÙ]J[Y[[™NˆXÝÜÝ‹[žWJHOˆXÝÜÝ‹[žWN‚ˆÙ^Yœ˜[Y\ÈH[Y[[™K™Ù]
+šÙ^Yœ˜[Y\ÈŠBˆYˆ›Ý\Ú[œÝ[˜ÙJÙ^Yœ˜[Y\ËXÝ
+HÜˆ›ÝÙ^Yœ˜[Y\Î‚ˆ™]\›ˆßBˆžN‚ˆš\œÝÙœ˜[YHHZ[ŠÙ^Yœ˜[Y\ËÙ^O[[X™Hœ˜[YNˆ›Ø]
+œ˜[YJJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆš\œÝÙœ˜[YHH™^
+]\ŠÙ^Yœ˜[Y\ÊJBˆ˜[Y\ÈHÙ^Yœ˜[Y\Ë™Ù]
+š\œÝÙœ˜[YKßJBˆ™]\›ˆXÝ
+˜[Y\ÊHYˆ\Ú[œÝ[˜ÙJ˜[Y\ËXÝ
+H[ÙHßB‚‚™YˆÝ[\]WÜÝ]X×Ü\ÙšY[Ê]NˆXÝÜÝ‹[žWJHOˆXÝÜÝ‹XÝÜÝ‹[žWWN‚ˆˆˆ’ÙY\šYË\ÜXÚYšXÈšY[È]H[Ý[Ûˆ™]\™Ù]\ˆÙ\È›Ý[š[X]Kˆˆˆ‚ˆÝ]X×ÙšY[ÎˆXÝÜÝ‹XÝÜÝ‹[žWWHHßBˆ›Üˆ[Y[[™H[ˆ]K™Ù]
+[Y[[™\È‹×JN‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ[Y[[™KXÝ
+HÜˆ[Y[[™K™Ù]
+\HŠHOH˜›Ù\\Ž‚ˆÛÛ[YBˆ\H[Y[[™K™Ù]
+›[Ù[Ü\Û˜[YHŠBˆYˆ›Ý\Ú[œÝ[˜ÙJ\ÝŠN‚ˆÛÛ[YBˆ[˜[ZX×ÙšY[ÈHÙ]
+T•Ñ’QSË™Ù]
+\
 
+JJBˆ˜[Y\ÎˆXÝÜÝ‹[žWHHßBˆY˜][ÈH[Y[[™K™Ù]
+™Y˜][Ý˜[Y\ÈŠBˆYˆ\Ú[œÝ[˜ÙJY˜][ËXÝ
+N‚ˆ˜[Y\Ë\]JY˜][ÊBˆ˜[Y\Ë\]JÙš\œÝÚÙ^Yœ˜[YWÙ]J[Y[[™JJBˆ™\Ù\™YHÂˆÝŠÙ^JNˆ˜[YBˆ›ÜˆÙ^K˜[YH[ˆ˜[Y\Ëš][\Ê
+BˆYˆÙ^H›Ý[ˆ[˜[ZX×ÙšY[È[™Ù^HOH•S”ÒUSÓˆ‚ˆBˆYˆ™\Ù\™Y‚ˆÝ]X×ÙšY[ÖÜ\HH™\Ù\™Yˆ™]\›ˆÝ]X×ÙšY[Â‚‚™YˆÜÝ]X×Ùš\œÝÚÙ^Yœ˜[YJ[Y[[™NˆXÝÜÝ‹[žWJHOˆ›Û™N‚ˆ˜[Y\ÈHÙš\œÝÚÙ^Yœ˜[YWÙ]J[Y[[™JBˆ˜[Y\ËœÜ
+•S”ÒUSÓˆ‹›Û™JBˆ[Y[[™VÈšÙ^Yœ˜[Y\È—HHÈŒŽˆ˜[Y\ßHYˆ˜[Y\È[ÙHßB‚‚™YˆÝ[Ü˜\ÙYÜ™Y\Ê˜[Y\Îˆ\ÝÙ›Ø]JHOˆ\ÝÙ›Ø]N‚ˆYˆ›Ý˜[Y\Î‚ˆ™]\›ˆ˜[Y\ÂˆÝ]]HÝ˜[Y\ÖÌWBˆ›Üˆ˜[YH[ˆ˜[Y\ÖÌN—N‚ˆY\ÝYH˜[YBˆÚ[HY\ÝYHÝ]]ËLWHˆNŒ‚ˆY\ÝYOHÍŒŒˆÚ[HY\ÝYHÝ]]ËLWHLNŒ‚ˆY\ÝY
+ÏHÍŒŒˆÝ]]˜\[™
+Y\ÝY
+Bˆ™]\›ˆÝ]]‚‚™YˆØ[™ÛWÙY™™\™[˜ÙJ˜[YNˆ›Ø]™Y™\™[˜ÙNˆ›Ø]
+HOˆ›Ø]‚ˆˆˆ”™]\›ˆHÚÜ\ÝÚYÛ™Y[™Ý[\ˆÙ™œÙ]œ›ÛHHØ[Xœ˜]YÝ[˜ÙKˆˆˆ‚ˆ™]\›ˆ
+›Ø]
+˜[YJHH›Ø]
+™Y™\™[˜ÙJH
+ÈNŒ
+H	HÍŒŒHNŒ‚‚™YˆÚ[\œÛ]J[Y\Îˆ\ÝÙ›Ø]K˜[Y\Îˆ\ÝÙ›Ø]K\™Ù]ˆ›Ø]
+HOˆ›Ø]‚ˆYˆ[Š[Y\ÊHOHHÜˆ\™Ù]H[Y\ÖÌN‚ˆ™]\›ˆ˜[Y\ÖÌBˆYˆ\™Ù]H[Y\ÖËLWN‚ˆ™]\›ˆ˜[Y\ÖËLWBˆšYÚHš\ÙXÝÜšYÚ
+[Y\Ë\™Ù]
+BˆYHšYÚHBˆÜ[ˆH[Y\ÖÜšYÚHH[Y\ÖÛYBˆYˆÜ[ˆHYKNN‚ˆ™]\›ˆ˜[Y\ÖÜšYÚBˆ[[Ý[H
+\™Ù]H[Y\ÖÛYJHÈÜ[‚ˆ™]\›ˆ˜[Y\ÖÛYH
+È
+˜[Y\ÖÜšYÚHH˜[Y\ÖÛYJH
+ˆ[[Ý[‚‚™YˆÜÛ[ÛÝ
+˜[Y\Îˆ\ÝÙ›Ø]K[˜X›Yˆ›ÛÛœÎˆ[HÌ
+HOˆ\ÝÙ›Ø]N‚ˆYˆ›Ý[˜X›YÜˆ[Š˜[Y\ÊHÎ‚ˆ™]\›ˆ˜[Y\Â‚ˆÈHËYœ˜[YHYYX[ˆ™Z™XÝÈ\ÛÛ]Y[™X\šÈ[\ËˆHÛ™KQ]\›Ë\Ý[Hš[\‚ˆÈ[ˆÛ[ÛÝÈÛÝÈ˜XÚÚ[™È›Ú\ÙHÚ[H˜Z\Ú[™È]ÈÝ]Ù™ˆ\š[™È˜\ÝˆÈÙ\Ý\™\ÈÈ]›ÚYHÛYÙÚ\Ú™\ÜÛœÙHÙˆHš^YÝË\\ÜÈš[\‹‚ˆœ›ÛHÝ]\ÝXÜÈ[\ÜYYX[‚‚ˆ›Ø\ÝH\Ý
+˜[Y\ÊBˆ›Üˆ[™^[ˆ˜[™ÙJK[Š˜[Y\ÊHHJN‚ˆ›Ø\ÝÚ[™^HHYYX[Š˜[Y\ÖÚ[™^HNš[™^
+È—JB‚ˆHKŒÈX^
+K[
+œÊJB‚ˆYˆ[WÙ›ÜŠÝ]Ù™Žˆ›Ø]
+HOˆ›Ø]‚ˆ]HHKŒÈ
+‹Œ
+ˆËŒMMNLLÍNMÎLÈ
+ˆÝ]Ù™ŠBˆ™]\›ˆKŒÈ
+KŒ
+È]HÈ
+B‚ˆš[\™YHÜ›Ø\ÝÌWBˆ\ÝÜ˜]ÈH›Ø\ÝÌBˆ\š]˜]]™HHŒˆ\š]˜]]™WØ[HH[WÙ›ÜŠKŒ
+Bˆ›Üˆ˜[YH[ˆ›Ø\ÝÌN—N‚ˆ˜]×Ù\š]˜]]™HH
+˜[YHH\ÝÜ˜]ÊHÈˆ\š]˜]]™H
+ÏH\š]˜]]™WØ[H
+ˆ
+˜]×Ù\š]˜]]™HH\š]˜]]™JBˆÝ]Ù™ˆHKŽ
+ÈŒH
+ˆXœÊ\š]˜]]™JBˆ[HH[WÙ›ÜŠÝ]Ù™ŠBˆš[\™Y˜\[™
+š[\™YËLWH
+È[H
+ˆ
+˜[YHHš[\™YËLWJJBˆ\ÝÜ˜]ÈH˜[YBˆ™]\›ˆš[\™Y‚‚™YˆÜÙ[XÝÚÙ^Yœ˜[Y\Êˆœ˜[YWÝ˜[Y\Îˆ\ÝÙXÝÜÝ‹›Ø]WKˆšY[Îˆ\VÜÝ‹‹‹—KˆœÎˆ[ˆÜ[Z^™Nˆ›ÛÛŠHOˆ\ÝÚ[N‚ˆYˆ[Šœ˜[YWÝ˜[Y\ÊHHŽ‚ˆ™]\›ˆ\Ý
+˜[™ÙJ[Šœ˜[YWÝ˜[Y\ÊJJBˆYˆ›ÝÜ[Z^™N‚ˆ™]\›ˆ\Ý
+˜[™ÙJ[Šœ˜[YWÝ˜[Y\ÊJJB‚ˆX^ÙØ\HX^
+‹›Ý[™
+œÈ
+ˆPVÒÑVQ”SQWÒS•T•SÔÑPÓÓ‘ÊJBˆÙ[XÝYHÌBˆ™]š[Ý\ÈHˆ›Üˆ[™^[ˆ˜[™ÙJK[Šœ˜[YWÝ˜[Y\ÊHHJN‚ˆY™™\™[˜ÙHHX^
+ˆXœÊœ˜[YWÝ˜[Y\ÖÚ[™^VÙšY[HHœ˜[YWÝ˜[Y\ÖÜ™]š[Ý\×VÙšY[JBˆ›ÜˆšY[[ˆšY[Âˆ
+BˆYˆY™™\™[˜ÙHHÑVQ”SQWÐS‘ÓWÕ‘TÒÓÜˆ[™^H™]š[Ý\ÈHX^ÙØ\‚ˆÙ[XÝY˜\[™
+[™^
+Bˆ™]š[Ý\ÈH[™^ˆYˆÙ[XÝYËLWHOH[Šœ˜[YWÝ˜[Y\ÊHHN‚ˆÙ[XÝY˜\[™
+[Šœ˜[YWÝ˜[Y\ÊHHJBˆ™]\›ˆÙ[XÝY‚‚™Yˆ^ÜÛZ[Øš™XÝ
+ˆ[\]WÜ]ˆÝˆ]ˆÝ]]Ü]ˆÝˆ]ˆØ[\\Îˆ]\˜X›VÝ\VÙ›Ø]XÝÜÝ‹[žWWWKˆœÎˆ[HÌˆ\˜][Û—ÜÙXÛÛ™Îˆ›Ø]›Û™HH›Û™KˆÜ[Z^™WÚÙ^Yœ˜[Y\Îˆ›ÛÛHYKˆÛ[ÛÝÛ[Ý[ÛŽˆ›ÛÛH˜[ÙKˆØ[Xœ˜][Û—ÜÜÙNˆXÝÜÝ‹[žWH›Û™HH›Û™KŠHOˆXÝÜÝ‹[žWN‚ˆYˆ›ÝLˆH[
+œÊHHŒ‚ˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠ“ÜÈ”ÈHØ[YHX™[ˆ\Ý\ˆ[™HLˆHŒˆŠB‚ˆ]HHØYÝ[\]J[\]WÜ]
+BˆØ[\\ÈH\Ý
+Ø[\\ÊBˆYˆ›ÝØ[\\Î‚ˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠ“›È^H]Y\Ý˜\ÈHÜÙH\˜H^Ü\‹ˆŠB‚ˆÈ\ÙH[ˆ^XÚ]™]]˜[Ø[Xœ˜][ÛˆÜÙHÚ[ˆÝ\YY
+›Üˆ^[\KˆÈHœ˜[YHÙ[XÝYœ›ÛHH™]]˜[Ú[™ÝÈ[ˆ[ˆ[\ÜYšY[ÊKˆÝ\Ú\ÙBˆÈ™]Z[ˆHÜšYÚ[˜[™Z]š[Üˆ[™Ø[Xœ˜]HYØZ[œÝHš\œÝ™[XX›HÜÙK‚ˆ™Y™\™[˜ÙWÜÜÙHHØ[Xœ˜][Û—ÜÜÙBˆYˆ™Y™\™[˜ÙWÜÜÙH\È›Û™N‚ˆ™Y™\™[˜ÙWÜÜÙHH™^
+ˆ
+ˆÜÙH›ÜˆËÜÙH[ˆØ[\\ÂˆYˆ˜›ÙHˆ[ˆØ[Ý[]WÜÜÙWØÛÛ›ÛÊÜÙJBˆ
+KˆØ[\\ÖÌVÌWKˆ
+BˆYˆ˜›ÙHˆ›Ý[ˆØ[Ý[]WÜÜÙWØÛÛ›ÛÊˆ™Y™\™[˜ÙWÜÜÙK™Y™\™[˜ÙWÜÜÙO\™Y™\™[˜ÙWÜÜÙBˆ
+N‚ˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠˆ“HÜÙHHØ[Xœ˜XÚpìÛˆ›ÈÛÛY[™HÛXœ›ÜÈHØY\˜\Èš\ÚX›\Ëˆ‚ˆ
+BˆÝ]X×Ü\ÙšY[ÈHÝ[\]WÜÝ]X×Ü\ÙšY[Ê]JBˆÛÛ™\Yˆ\ÝÝ\VÙ›Ø]XÝÜÝ‹XÝÜÝ‹›Ø]WWWHH×Bˆ™]š[Ý\×Ùœ˜[YHHÝÜœÛ×Ùœ˜[YJ™Y™\™[˜ÙWÜÜÙJHÜˆÓÔ“Ô‘Q‘T‘SÑWÑ”SQBˆ™]š[Ý\×ØÛÛ›ÛÎˆXÝÜÝ‹XÝÜÝ‹›Ø]WHHßBˆ›Üˆ[Y\Ý[\ÜÙH[ˆØ[\\Î‚ˆÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊˆÜÙKˆ™Y™\™[˜ÙWÜÜÙO\™Y™\™[˜ÙWÜÜÙKˆ™]š[Ý\×Ùœ˜[YO\™]š[Ý\×Ùœ˜[YKˆ™]š[Ý\×ØÛÛ›ÛÏ\™]š[Ý\×ØÛÛ›ÛËˆ
+BˆÝ\œ™[Ùœ˜[YHHÝÜœÛ×Ùœ˜[YJÜÙK˜[˜XÚ×Ùœ˜[YO\™]š[Ý\×Ùœ˜[YJBˆYˆÝ\œ™[Ùœ˜[YH\È›Ý›Û™N‚ˆ™]š[Ý\×Ùœ˜[YHHÝ\œ™[Ùœ˜[YBˆYˆÛÛ›ÛÎ‚ˆÛÛ™\Y˜\[™
 
-def validate_template(data: dict[str, Any]) -> None:
-    if not isinstance(data, dict):
-        raise MiobjectError("El archivo no contiene un objeto JSON vÃ¡lido.")
-    if not isinstance(data.get("timelines"), list):
-        raise MiobjectError("El archivo no contiene la lista de pistas 'timelines'.")
-    templates = data.get("templates", [])
-    is_human = any(
-        isinstance(item, dict)
-        and isinstance(item.get("model"), dict)
-        and str(item["model"].get("name", "")).lower() == "human"
-        for item in templates
-    )
-    if not is_human:
-        raise MiobjectError("La plantilla debe contener un personaje humano de Mine-imator.")
-    found = {
-        item.get("model_part_name")
-        for item in data["timelines"]
-        if isinstance(item, dict) and item.get("type") == "bodypart"
-    }
-    missing = REQUIRED_PARTS - found
-    if missing:
-        names = ", ".join(sorted(missing))
-        raise MiobjectError(f"Faltan pistas corporales necesarias en la plantilla: {names}")
+X^
+Œ›Ø]
+[Y\Ý[\
+JKÛÛ›ÛÊJBˆ›Üˆ\˜[Y\È[ˆÛÛ›ÛËš][\Ê
+N‚ˆ™]š[Ý\×ØÛÛ›ÛËœÙ]Y˜][
+\ßJK\]J˜[Y\ÊBˆYˆ›ÝÛÛ™\Y‚ˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠˆ“›È^HÜÙ\È°è[Y\È\˜H^Ü\‹ˆÛÛ\YX˜H]YHÙH™X[ˆÜÈÛXœ›ÜÈH\ÈØY\˜\Ëˆ‚ˆ
+B‚ˆÛÛ™\YœÛÜ
+Ù^O[[X™H][Nˆ][VÌJBˆY\XØ]YˆXÝÙ›Ø]XÝÜÝ‹XÝÜÝ‹›Ø]WWHHßBˆ›Üˆ[Y\Ý[\ÛÛ›ÛÈ[ˆÛÛ™\Y‚ˆY\XØ]YÝ[Y\Ý[\HHÛÛ›ÛÂˆÛÛ™\YHÛÜY
+Y\XØ]Yš][\Ê
+KÙ^O[[X™H][Nˆ][VÌJB‚ˆÈØ[Xœ˜]HXXÚÚ[›™[YØZ[œÝHÙ[XÝY™]]˜[ÜÙKˆYˆH›ÙBˆÈ\\ÈØØÛYY[ˆ]œ˜[YK˜[˜XÚÈÈ]Èš\œÝ™[XX›HØ[\K‚ˆ™Y™\™[˜ÙNˆXÝÜÝ‹XÝÜÝ‹›Ø]WHHßBˆØ[Xœ˜][Û—ØÛÛ›ÛÈHØ[Ý[]WÜÜÙWØÛÛ›ÛÊˆ™Y™\™[˜ÙWÜÜÙK™Y™\™[˜ÙWÜÜÙO\™Y™\™[˜ÙWÜÜÙBˆ
+Bˆ›Üˆ\šY[È[ˆØ[Xœ˜][Û—ØÛÛ›ÛËš][\Ê
+N‚ˆ™Y™\™[˜ÙVÜ\HHÂˆšY[ˆ›Ø]
+˜[YJH›ÜˆšY[˜[YH[ˆšY[Ëš][\Ê
+BˆBˆ›ÜˆËÛÛ›ÛÈ[ˆÛÛ™\Y‚ˆ›Üˆ\šY[È[ˆÛÛ›ÛËš][\Ê
+N‚ˆ\Ü™Y™\™[˜ÙHH™Y™\™[˜ÙKœÙ]Y˜][
+\ßJBˆ›ÜˆšY[˜[YH[ˆšY[Ëš][\Ê
+N‚ˆ\Ü™Y™\™[˜ÙKœÙ]Y˜][
+šY[›Ø]
+˜[YJJB‚ˆØ[Xœ˜]Yˆ\ÝÝ\VÙ›Ø]XÝÜÝ‹XÝÜÝ‹›Ø]WWWHH×Bˆ›Üˆ[Y\Ý[\ÛÛ›ÛÈ[ˆÛÛ™\Y‚ˆ™[]]™WØÛÛ›ÛÎˆXÝÜÝ‹XÝÜÝ‹›Ø]WHHßBˆ›Üˆ\šY[È[ˆÛÛ›ÛËš][\Ê
+N‚ˆ\Ü™Y™\™[˜ÙHH™Y™\™[˜ÙK™Ù]
+\ßJBˆ™[]]™WØÛÛ›ÛÖÜ\HHÂˆšY[ˆÜÚ\WÛ[Ý[Û—Ù[Jˆ\ˆšY[ˆØ[™ÛWÙY™™\™[˜ÙJ˜[YK\Ü™Y™\™[˜ÙK™Ù]
+šY[˜[YJJKˆ
+Bˆ›ÜˆšY[˜[YH[ˆšY[Ëš][\Ê
+BˆBˆØ[Xœ˜]Y˜\[™
 
-
-def _first_keyframe_data(timeline: dict[str, Any]) -> dict[str, Any]:
-    keyframes = timeline.get("keyframes")
-    if not isinstance(keyframes, dict) or not keyframes:
-        return {}
-    try:
-        first_frame = min(keyframes, key=lambda frame: float(frame))
-    except (TypeError, ValueError):
-        first_frame = next(iter(keyframes))
-    values = keyframes.get(first_frame, {})
-    return dict(values) if isinstance(values, dict) else {}
-
-
-def _template_static_part_fields(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Keep rig-specific fields that the motion retargeter does not animate."""
-    static_fields: dict[str, dict[str, Any]] = {}
-    for timeline in data.get("timelines", []):
-        if not isinstance(timeline, dict) or timeline.get("type") != "bodypart":
-            continue
-        part = timeline.get("model_part_name")
-        if not isinstance(part, str):
-            continue
-        dynamic_fields = set(PART_FIELDS.get(part, ()))
-        values: dict[str, Any] = {}
-        defaults = timeline.get("default_values")
-        if isinstance(defaults, dict):
-            values.update(defaults)
-        values.update(_first_keyframe_data(timeline))
-        preserved = {
-            str(key): value
-            for key, value in values.items()
-            if key not in dynamic_fields and key != "TRANSITION"
-        }
-        if preserved:
-            static_fields[part] = preserved
-    return static_fields
-
-
-def _static_first_keyframe(timeline: dict[str, Any]) -> None:
-    values = _first_keyframe_data(timeline)
-    values.pop("TRANSITION", None)
-    timeline["keyframes"] = {"0": values} if values else {}
-
-
-def _unwrap_degrees(values: list[float]) -> list[float]:
-    if not values:
-        return values
-    output = [values[0]]
-    for value in values[1:]:
-        adjusted = value
-        while adjusted - output[-1] > 180.0:
-            adjusted -= 360.0
-        while adjusted - output[-1] < -180.0:
-            adjusted += 360.0
-        output.append(adjusted)
-    return output
-
-
-def _angle_difference(value: float, reference: float) -> float:
-    """Return the shortest signed angular offset from the calibrated stance."""
-    return (float(value) - float(reference) + 180.0) % 360.0 - 180.0
-
-
-def _interpolate(times: list[float], values: list[float], target: float) -> float:
-    if len(times) == 1 or target <= times[0]:
-        return values[0]
-    if target >= times[-1]:
-        return values[-1]
-    right = bisect_right(times, target)
-    left = right - 1
-    span = times[right] - times[left]
-    if span <= 1e-9:
-        return values[right]
-    amount = (target - times[left]) / span
-    return values[left] + (values[right] - values[left]) * amount
-
-
-def _smooth(values: list[float], enabled: bool, fps: int = 30) -> list[float]:
-    if not enabled or len(values) < 3:
-        return values
-
-    # A 3-frame median rejects isolated landmark jumps. A One-Euro-style filter
-    # then smooths slow tracking noise while raising its cutoff during fast
-    # gestures to avoid the sluggish response of a fixed low-pass filter.
-    from statistics import median
-
-    robust = list(values)
-    for index in range(1, len(values) - 1):
-        robust[index] = median(values[index - 1:index + 2])
-
-    dt = 1.0 / max(1, int(fps))
-
-    def alpha_for(cutoff: float) -> float:
-        tau = 1.0 / (2.0 * 3.141592653589793 * cutoff)
-        return 1.0 / (1.0 + tau / dt)
-
-    filtered = [robust[0]]
-    last_raw = robust[0]
-    derivative = 0.0
-    derivative_alpha = alpha_for(1.0)
-    for value in robust[1:]:
-        raw_derivative = (value - last_raw) / dt
-        derivative += derivative_alpha * (raw_derivative - derivative)
-        cutoff = 1.8 + 0.025 * abs(derivative)
-        alpha = alpha_for(cutoff)
-        filtered.append(filtered[-1] + alpha * (value - filtered[-1]))
-        last_raw = value
-    return filtered
-
-
-def _select_keyframes(
-    frame_values: list[dict[str, float]],
-    fields: tuple[str, ...],
-    fps: int,
-    optimize: bool,
-) -> list[int]:
-    if len(frame_values) <= 2:
-        return list(range(len(frame_values)))
-    if not optimize:
-        return list(range(len(frame_values)))
-
-    max_gap = max(2, round(fps * MAX_KEYFRAME_INTERVAL_SECONDS))
-    selected = [0]
-    previous = 0
-    for index in range(1, len(frame_values) - 1):
-        difference = max(
-            abs(frame_values[index][field] - frame_values[previous][field])
-            for field in fields
-        )
-        if difference >= KEYFRAME_ANGLE_THRESHOLD or index - previous >= max_gap:
-            selected.append(index)
-            previous = index
-    if selected[-1] != len(frame_values) - 1:
-        selected.append(len(frame_values) - 1)
-    return selected
-
-
-def export_miobject(
-    template_path: str | Path,
-    output_path: str | Path,
-    samples: Iterable[tuple[float, dict[str, Any]]],
-    fps: int = 30,
-    duration_seconds: float | None = None,
-    optimize_keyframes: bool = True,
-    smooth_motion: bool = False,
-    calibration_pose: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    if not 12 <= int(fps) <= 60:
-        raise MiobjectError("Los FPS de salida deben estar entre 12 y 60.")
-
-    data = load_template(template_path)
-    samples = list(samples)
-    if not samples:
-        raise MiobjectError("No hay muestras de pose para exportar.")
-
-    # Use an explicit neutral calibration pose when supplied (for example,
-    # a frame selected from a neutral window in an imported video). Otherwise
-    # retain the original behavior and calibrate against the first reliable pose.
-    reference_pose = calibration_pose
-    if reference_pose is None:
-        reference_pose = next(
-            (
-                pose for _, pose in samples
-                if "body" in calculate_pose_controls(pose)
-            ),
-            samples[0][1],
-        )
-    if "body" not in calculate_pose_controls(
-        reference_pose, reference_pose=reference_pose
-    ):
-        raise MiobjectError(
-            "La pose de calibraciÃ³n no contiene hombros y caderas visibles."
-        )
-    static_part_fields = _template_static_part_fields(data)
-    converted: list[tuple[float, dict[str, dict[str, float]]]] = []
-    previous_frame = _torso_frame(reference_pose) or WORLD_REFERENCE_FRAME
-    for timestamp, pose in samples:
-        controls = calculate_pose_controls(
-            pose,
-            reference_pose=reference_pose,
-            previous_frame=previous_frame,
-        )
-        current_frame = _torso_frame(pose, fallback_frame=previous_frame)
-        if current_frame is not None:
-            previous_frame = current_frame
-        if controls:
-            converted.append((max(0.0, float(timestamp)), controls))
-    if not converted:
-        raise MiobjectError(
-            "No hay poses vÃ¡lidas para exportar. Comprueba que se vean los hombros y las caderas."
-        )
-
-    converted.sort(key=lambda item: item[0])
-    deduplicated: dict[float, dict[str, dict[str, float]]] = {}
-    for timestamp, controls in converted:
-        deduplicated[timestamp] = controls
-    converted = sorted(deduplicated.items(), key=lambda item: item[0])
-
-    # Calibrate each channel against the selected neutral pose. If a body
-    # part is occluded in that frame, fall back to its first reliable sample.
-    reference: dict[str, dict[str, float]] = {}
-    calibration_controls = calculate_pose_controls(
-        reference_pose, reference_pose=reference_pose
-    )
-    for part, fields in calibration_controls.items():
-        reference[part] = {
-            field: float(value) for field, value in fields.items()
-        }
-    for _, controls in converted:
-        for part, fields in controls.items():
-            part_reference = reference.setdefault(part, {})
-            for field, value in fields.items():
-                part_reference.setdefault(field, float(value))
-
-    calibrated: list[tuple[float, dict[str, dict[str, float]]]] = []
-    for timestamp, controls in converted:
-        relative_controls: dict[str, dict[str, float]] = {}
-        for part, fields in controls.items():
-            part_reference = reference.get(part, {})
-            relative_controls[part] = {
-                field: _shape_motion_delta(
-                    part,
-                    field,
-                    _angle_difference(value, part_reference.get(field, value)),
-                )
-                for field, value in fields.items()
-            }
-        calibrated.append((timestamp, relative_controls))
-    converted = calibrated
-    source_times = [item[0] for item in converted]
-
-    if duration_seconds is None:
-        duration = source_times[-1]
-    else:
-        duration = max(float(duration_seconds), source_times[-1])
-    if duration <= 0:
-        duration = 1.0 / fps
-
-    final_frame = max(1, int(round(duration * fps)))
-    frame_times = [min(frame / fps, duration) for frame in range(final_frame + 1)]
-
-    part_frame_values: dict[str, list[dict[str, float]]] = {}
-    for part, fields in PART_FIELDS.items():
-        part_sources: dict[str, tuple[list[float], list[float]]] = {}
-        for field in fields:
-            valid = [
-                (timestamp, controls[part][field])
-                for timestamp, controls in converted
-                if part in controls and field in controls[part]
-            ]
-            if not valid:
-                part_sources[field] = ([0.0], [0.0])
-                continue
-            values = _unwrap_degrees([item[1] for item in valid])
-            part_sources[field] = ([item[0] for item in valid], values)
-
-        frame_values = []
-        for target in frame_times:
-            values = {
-                field: _interpolate(
-                    part_sources[field][0],
-                    part_sources[field][1],
-                    target,
-                )
-                for field in fields
-            }
-            frame_values.append(values)
-
-        for field in fields:
-            filtered = _smooth(
-                [frame[field] for frame in frame_values],
-                smooth_motion,
-                fps=int(fps),
-            )
-            for index, value in enumerate(filtered):
-                frame_values[index][field] = value
-        part_frame_values[part] = frame_values
-
-    keyframe_counts: dict[str, int] = {}
-    for timeline in data["timelines"]:
-        if not isinstance(timeline, dict):
-            continue
-        timeline_type = timeline.get("type")
-        if timeline_type == "folder":
-            # Freeze the initial transform so the template's group offset is retained.
-            _static_first_keyframe(timeline)
-        elif timeline_type == "char":
-            # Freeze the template's first character transform. This also removes
-            # any root animation left inside a previously exported .miobject.
-            _static_first_keyframe(timeline)
-        elif timeline_type == "bodypart":
-            part = timeline.get("model_part_name")
-            if part in PART_FIELDS:
-                fields = PART_FIELDS[part]
-                values = part_frame_values[part]
-                selected = _select_keyframes(values, fields, int(fps), optimize_keyframes)
-                timeline["keyframes"] = {}
-                for frame in selected:
-                    keyframe_values = dict(static_part_fields.get(part, {}))
-                    keyframe_values.update({
-                        field: round(float(values[frame][field]), 4)
-                        for field in fields
-                    })
-                    timeline["keyframes"][str(frame)] = keyframe_values
-                keyframe_counts[part] = len(selected)
-            else:
-                # Keep accessories and other parts at their initial transform.
-                _static_first_keyframe(timeline)
-
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    try:
-        temporary.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(output)
-    except OSError as exc:
-        temporary.unlink(missing_ok=True)
-        raise MiobjectError(f"No se pudo guardar el archivo: {exc}") from exc
-
-    return {
-        "path": str(output),
-        "duration": duration,
-        "fps": int(fps),
-        "final_frame": final_frame,
-        "keyframe_counts": keyframe_counts,
-        "total_keyframes": sum(keyframe_counts.values()),
-    }
+[Y\Ý[\™[]]™WØÛÛ›ÛÊJBˆÛÛ™\YHØ[Xœ˜]YˆÛÝ\˜ÙWÝ[Y\ÈHÚ][VÌH›Üˆ][H[ˆÛÛ™\YB‚ˆYˆ\˜][Û—ÜÙXÛÛ™È\È›Û™N‚ˆ\˜][ÛˆHÛÝ\˜ÙWÝ[Y\ÖËLWBˆ[ÙN‚ˆ\˜][ÛˆHX^
+›Ø]
+\˜][Û—ÜÙXÛÛ™ÊKÛÝ\˜ÙWÝ[Y\ÖËLWJBˆYˆ\˜][ÛˆH‚ˆ\˜][ÛˆHKŒÈœÂ‚ˆš[˜[Ùœ˜[YHHX^
+K[
+›Ý[™
+\˜][Ûˆ
+ˆœÊJJBˆœ˜[YWÝ[Y\ÈHÛZ[Šœ˜[YHÈœË\˜][ÛŠH›Üˆœ˜[YH[ˆ˜[™ÙJš[˜[Ùœ˜[YH
+ÈJWB‚ˆ\Ùœ˜[YWÝ˜[Y\ÎˆXÝÜÝ‹\ÝÙXÝÜÝ‹›Ø]WWHHßBˆ›Üˆ\šY[È[ˆT•Ñ’QSËš][\Ê
+N‚ˆ\ÜÛÝ\˜Ù\ÎˆXÝÜÝ‹\VÛ\ÝÙ›Ø]K\ÝÙ›Ø]WWHHßBˆ›ÜˆšY[[ˆšY[Î‚ˆ˜[YHÂˆ
+[Y\Ý[\ÛÛ›ÛÖÜ\VÙšY[JBˆ›Üˆ[Y\Ý[\ÛÛ›ÛÈ[ˆÛÛ™\YˆYˆ\[ˆÛÛ›ÛÈ[™šY[[ˆÛÛ›ÛÖÜ\BˆBˆYˆ›Ý˜[Y‚ˆ\ÜÛÝ\˜Ù\ÖÙšY[HH
+ÌŒKÌŒJBˆÛÛ[YBˆ˜[Y\ÈHÝ[Ü˜\ÙYÜ™Y\ÊÚ][VÌWH›Üˆ][H[ˆ˜[YJBˆ\ÜÛÝ\˜Ù\ÖÙšY[HH
+Ú][VÌH›Üˆ][H[ˆ˜[YK˜[Y\ÊB‚ˆœ˜[YWÝ˜[Y\ÈH×Bˆ›Üˆ\™Ù][ˆœ˜[YWÝ[Y\Î‚ˆ˜[Y\ÈHÂˆšY[ˆÚ[\œÛ]Jˆ\ÜÛÝ\˜Ù\ÖÙšY[VÌKˆ\ÜÛÝ\˜Ù\ÖÙšY[VÌWKˆ\™Ù]ˆ
+Bˆ›ÜˆšY[[ˆšY[ÂˆBˆœ˜[YWÝ˜[Y\Ë˜\[™
+˜[Y\ÊB‚ˆ›ÜˆšY[[ˆšY[Î‚ˆš[\™YHÜÛ[ÛÝ
+ˆÙœ˜[YVÙšY[H›Üˆœ˜[YH[ˆœ˜[YWÝ˜[Y\×KˆÛ[ÛÝÛ[Ý[Û‹ˆœÏZ[
+œÊKˆ
+Bˆ›Üˆ[™^˜[YH[ˆ[[Y\˜]Jš[\™Y
+N‚ˆœ˜[YWÝ˜[Y\ÖÚ[™^VÙšY[HH˜[YBˆ\Ùœ˜[YWÝ˜[Y\ÖÜ\HHœ˜[YWÝ˜[Y\Â‚ˆÙ^Yœ˜[YWØÛÝ[ÎˆXÝÜÝ‹[HHßBˆ›Üˆ[Y[[™H[ˆ]VÈ[Y[[™\È—N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ[Y[[™KXÝ
+N‚ˆÛÛ[YBˆ[Y[[™WÝ\HH[Y[[™K™Ù]
+\HŠBˆYˆ[Y[[™WÝ\HOH™›Û\ˆŽ‚ˆÈœ™Y^™HH[š]X[˜[œÙ›Ü›HÛÈH[\]IÜÈÜ›Ý\Ù™œÙ]\È™]Z[™Y‚ˆÜÝ]X×Ùš\œÝÚÙ^Yœ˜[YJ[Y[[™JBˆ[Yˆ[Y[[™WÝ\HOH˜Ú\ˆŽ‚ˆÈœ™Y^™HH[\]IÜÈš\œÝÚ\˜XÝ\ˆ˜[œÙ›Ü›Kˆ\È[ÛÈ™[[Ý™\ÂˆÈ[žH›ÛÝ[š[X][ÛˆY[œÚYHH™]š[Ý\ÛH^ÜY›Z[Øš™XÝ‚ˆÜÝ]X×Ùš\œÝÚÙ^Yœ˜[YJ[Y[[™JBˆ[Yˆ[Y[[™WÝ\HOH˜›Ù\\Ž‚ˆ\H[Y[[™K™Ù]
+›[Ù[Ü\Û˜[YHŠBˆYˆ\[ˆT•Ñ’QSÎ‚ˆšY[ÈHT•Ñ’QSÖÜ\Bˆ˜[Y\ÈH\Ùœ˜[YWÝ˜[Y\ÖÜ\BˆÙ[XÝYHÜÙ[XÝÚÙ^Yœ˜[Y\Ê˜[Y\ËšY[Ë[
+œÊKÜ[Z^™WÚÙ^Yœ˜[Y\ÊBˆ[Y[[™VÈšÙ^Yœ˜[Y\È—HHßBˆ›Üˆœ˜[YH[ˆÙ[XÝY‚ˆÙ^Yœ˜[YWÝ˜[Y\ÈHXÝ
+Ý]X×Ü\ÙšY[Ë™Ù]
+\ßJJBˆÙ^Yœ˜[YWÝ˜[Y\Ë\]JÂˆšY[ˆ›Ý[™
+›Ø]
+˜[Y\ÖÙœ˜[YWVÙšY[JK
+Bˆ›ÜˆšY[[ˆšY[ÂˆJBˆ[Y[[™VÈšÙ^Yœ˜[Y\È—VÜÝŠœ˜[YJWHHÙ^Yœ˜[YWÝ˜[Y\ÂˆÙ^Yœ˜[YWØÛÝ[ÖÜ\HH[ŠÙ[XÝY
+Bˆ[ÙN‚ˆÈÙY\XØÙ\ÜÛÜšY\È[™Ý\ˆ\È]Z\ˆ[š]X[˜[œÙ›Ü›K‚ˆÜÝ]X×Ùš\œÝÚÙ^Yœ˜[YJ[Y[[™JB‚ˆÝ]]H]
+Ý]]Ü]
+BˆÝ]]œ\™[›ZÙ\Š\™[ÏUYK^\ÝÛÚÏUYJBˆ[\Ü˜\žHHÝ]]Ú]ÜÝY™š^
+Ý]]œÝY™š^
+È‹\ŠBˆžN‚ˆ[\Ü˜\žKÜš]WÝ^
+ˆœÛÛ‹™[\Ê]K[œÝ\™WØ\ØÚZOQ˜[ÙK[™[LŠH
+È—ˆ‹ˆ[˜ÛÙ[™ÏH]‹N‹ˆ
+Bˆ[\Ü˜\žKœ™\XÙJÝ]]
+Bˆ^Ù\ÔÑ\œ›Üˆ\È^Î‚ˆ[\Ü˜\žK[›[šÊZ\ÜÚ[™×ÛÚÏUYJBˆ˜Z\ÙHZ[Øš™XÝ\œ›ÜŠˆ“›ÈÙHYÈÝX\™\ˆ[\˜Ú]›ÎˆÙ^ßHŠHœ›ÛH^Â‚ˆ™]\›ˆÂˆœ]ŽˆÝŠÝ]]
+Kˆ™\˜][ÛˆŽˆ\˜][Û‹ˆ™œÈŽˆ[
+œÊKˆ™š[˜[Ùœ˜[YHŽˆš[˜[Ùœ˜[YKˆšÙ^Yœ˜[YWØÛÝ[ÈŽˆÙ^Yœ˜[YWØÛÝ[ËˆÝ[ÚÙ^Yœ˜[Y\ÈŽˆÝ[JÙ^Yœ˜[YWØÛÝ[Ë˜[Y\Ê
+JKˆB

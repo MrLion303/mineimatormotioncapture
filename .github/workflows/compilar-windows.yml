@@ -46,212 +46,99 @@ jobs:
           python -m pip install "mmcv==2.1.0" -f https://download.openmmlab.com/mmcv/dist/cpu/torch2.1.0/index.html
 
           # Dependencias de inferencia necesarias para RTMDet + RTMPose + MotionBERT.
-          # MMPose declara chumpy como dependencia heredada para otras funciones
-          # (SMPL/mesh); el pipeline human3d de keypoints no lo utiliza.
-          python -m pip install six json-tricks munkres matplotlib pillow "xtcocotools==1.14.3" pycocotools scipy shapely terminaltables tqdm
-          python -m pip install --no-deps -r requirements-mmpose.txt
+          # MMPose declara chumpy como dependencia heredada para otras fuÕÈZ®Ëkºwµçkz»§Â+a…æş
+Ş§ûZŠWè­û¥–‹­¦ëHÈR[œİ[\ˆˆİÜ™\ÈHÛ™Y\ˆ[[YH[™\ˆÚ[\›˜[‚ˆ[\›˜[H›ÛİÈ—Ú[\›˜[‚ˆ\ÜÙ\[\›˜[š\×Ù\Š
+K‘˜[HHØ\œ]HÚ[\›˜[[Z™Xİ]X›H‚‚ˆ[Ù[Ú[™^H[\›˜[È›[Ù[Z[™^[[‚ˆÛÛ™šYÜÈH[\›˜[È˜ÛÛ™šYÜÈ‚ˆ\ÜÙ\[Ù[Ú[™^š\×Ùš[J
+K
+ˆ‘˜[HÚ[\›˜[Û[Ù[Z[™^[[ÈSQ[™Ú[™H›ÈÙ°èH™\ÛÛ™\ˆ[[X\È[X[ŒÙ‚ˆ
+Bˆ\ÜÙ\
+ÛÛ™šYÜÈÈ˜›ÙWÌÙÚÙ^\Ú[ˆÈ›[İ[Û˜™\ˆÈšÍ›H‚ˆÈ›[İ[Û˜™\ÚÍ›K[[ŠKš\×Ùš[J
+K
+ˆ‘˜[H[Y]Yš[HH[İ[Û‘T•[ˆÚ[\›˜[ØÛÛ™šYÜÈ‚ˆ
+Bˆ\ÜÙ\
+ÛÛ™šYÜÈÈ˜›ÙWÌ™ÚÙ^\Ú[ˆÈœ\ÜÙHˆÈ˜ÛØÛÈ‚ˆÈœ\ÜÙWØÛØÛË[[ŠKš\×Ùš[J
+K
+ˆ‘˜[H[Y]Yš[HH•TÜÙH[ˆÚ[\›˜[ØÛÛ™šYÜÈ‚ˆ
+Bˆ\ÜÙ\
+ÛÛ™šYÜÈÈ˜›ÙWÌÙÚÙ^\Ú[ˆÈ›[İ[Û˜™\ˆÈšÍ›H‚ˆÈ›[İ[Û˜™\Ùİ›Ü›Y\‹YLÙœ›WÎŒÌ‹LLŒWÚÍ›KœHŠKš\×Ùš[J
+K
+ˆ‘˜[HHÛÛ™šYİ\˜XÚpìÛˆ]ÛˆH[İ[Û‘T•[ˆÚ[\›˜[ØÛÛ™šYÜÈ‚ˆ
+B‚ˆš[
+“Y]Y]ÜÈSTÜÙH[˜ÛZYÜÎˆ‹[Ù[Ú[™^
+Bˆš[
+ÛÛ™šYİ\˜XÚ[Û™\ÈSTÜÙH[˜ÛZY\Îˆ‹ÛÛ™šYÜÊBˆB‚‚ˆH˜[YNˆ›Ø˜\ˆ•TÜÙHH[İ[Û‘T•\ÙH[Z™Xİ]X›H[\\]Y]YÂˆÚ[ˆ˜\Úˆ[‚ˆÔÒÒÓQNˆ	ŞÈÚ]X‹ÛÜšÜÜXÙH_KËÜ˜Ú]Ú[™İÙY\Û[ÚÙBˆ[ˆˆÙ]Y][È\Y˜Z[ˆ›HYˆ[\ÜÙK\Û[ÚÙK]\İ›ÙÂˆÈ™]][^˜HÜÈ\ÛÜÈ[™HÛÛ\[XÚ[Û™\Ëˆ[ˆHš[Y\˜HZ™XİXÚpìÛˆÙBˆÈ\ØØ\™Ø[ÈÚ]XˆXİ[ÛœÈÜÈİX\™H[ˆØXÚ0êHÚHHYX˜H\›Z[˜K‚ˆYˆH‹Ù\İÓZ[™Z[X]Ü“[İ[ÛØ\\™KÓZ[™Z[X]Ü“[İ[ÛØ\\™K™^HK\Û[ÚÙK]\İ[[\ÜÙNÈ[‚ˆYˆÈYˆ[\ÜÙK\Û[ÚÙK]\İ›ÙÈNÈ[‚ˆØ][\ÜÙK\Û[ÚÙK]\İ›ÙÂˆ[ÙBˆXÚÈ‘[Z™Xİ]X›H˜[0ìÈ[ˆHYX˜H[[İÜˆH›ÈÙ[™\°ìÈ[ˆ™YÚ\İ›Ëˆ‚ˆšBˆ^]BˆšBˆ\İHYˆ[\ÜÙK\Û[ÚÙK]\İ›ÙÂˆXÚÈ‘[Z™Xİ]X›H[\\]Y]YÈ[šXÚX[^°ìÈ•TÜÙHH[İ[Û‘T•ÛÜœ™Xİ[Y[Kˆ‚‚ˆH˜[YNˆ›ØÙ\Ø\ˆ[šY[È™X[H^Ü\ˆH[š[XXÚpìÛ‚ˆÚ[ˆÜÚˆ[‚ˆÔÒÒÓQNˆ	ŞÈÚ]X‹ÛÜšÜÜXÙH_KËÜ˜Ú]Ú[™İÙY\Û[ÚÙBˆ[ˆˆ™]ËR][HR][U\H\™XİÜHQ›Ü˜ÙHT]\Y˜XİÈİ]S[ˆ	^HH
+™\ÛÛ™KT]™\İÓZ[™Z[X]Ü“[İ[ÛØ\\™KÓZ[™Z[X]Ü“[İ[ÛØ\\™K™^HŠK”]ˆ	[[YSÙÈH›Ú[‹T]	[“ĞĞSTUH“™YØ]]™TİY[ÜËÓZ[™Z[X]Ü“[İ[ÛØ\\™KÛÙÜËÜ[[YK›ÙÈ‚ˆ™[[İ™KR][H	[[YSÙÈQ›Ü˜ÙHQ\œ›ÜXİ[ÛˆÚ[[PÛÛ[YB‚ˆÈ\ØØ\™ØH[šY[ÈÜšYÚ[˜[ÛÛ\\YÈÜˆ[\İX\š[È\ÙHÛÛÙÛHš]™K‚ˆ	šY[Ô]H˜\Y˜XİËÌMLÌ—ÜYX˜WÛ›Ü›X[^˜YK˜]šH‚ˆ	šY[Õ\›HšÎ‹ËÙš]™K™ÛÛÙÛK˜ÛÛKİXÏÙ^ÜYİÛ›ØY	šYLLULŞ]\’ÜÜÔTKP\\ÙUP“ÓR•MH‚ˆÜš]KRÜİ‘\ØØ\™Ø[™È[šY[ÈHYX˜H\ÙHÛÛÙÛHš]™K‹‹ˆ‚ˆİ\›™^HKY˜Z[K[ØØ][ÛˆK\Ú[[K\ÚİËY\œ›ÜˆK\™]HÈK\™]KY[^HˆK[İ]]	šY[Ô]	šY[Õ\›ˆYˆ
+	TÕVUÓÑH[™H
+HÂˆ›İÈ“›ÈÙHYÈ\ØØ\™Ø\ˆ[šY[ÈÜšYÚ[˜[\ÙHÛÛÙÛHš]™Kˆ‚ˆBˆ	šY[Ñš[HHÙ]R][H	šY[Ô]ˆYˆ
+	šY[Ñš[K“[™İ[™HMMŒ
+HÂˆ›İÈ‘[[Xpì[È[šY[È\ØØ\™ØYÈ›ÈÛÚ[˜ÚYHÛÛˆ[\˜Ú]›È\Ü\˜YÎˆ	
+	šY[Ñš[K“[™İ
+H]\Ëˆ‚ˆBˆ	ÚLMˆH
+Ù]Qš[R\ÚP[ÛÜš]HÒLMˆ	šY[Ô]
+K’\Ú•ÓİÙ\’[˜\šX[
 
-          # Import smoke test: falla el workflow si falta un paquete o si la
-          # combinaciÃ³n de NumPy/PyTorch/MMCV no puede cargarse.
-          python -c "import numpy, torch, mmcv, mmengine, mmdet, mmpose, xtcocotools, pycocotools, matplotlib, PIL; from mmpose.apis import MMPoseInferencer; from mocap_app.motionbert import _motionbert_inferencer_kwargs; cfg = _motionbert_inferencer_kwargs('Windows'); assert cfg['det_model'] == 'whole_image'; assert numpy.__version__.startswith('1.26.'), numpy.__version__; assert torch.__version__.startswith('2.1.'), torch.__version__; print('OpenMMLab listo:', numpy.__version__, torch.__version__, mmcv.__version__, mmengine.__version__, mmdet.__version__, mmpose.__version__)"
+BˆYˆ
+	ÚLMˆ[™H	Í™YNÌ˜ÎŒ˜ØXL™ÌÙLY˜ÌNYŒÙYLÌØM˜™™LNLLÙYÎMLMXÉÊHÂˆ›İÈ‘[ÒLMˆ[šY[È›ÈÛÚ[˜ÚYHÛÛˆ[š^\™H]]Üš^˜YÎˆ	ÚLM‹ˆ‚ˆBˆ	ÚYÛ˜]\™HHÔŞ\İ[K•^‘[˜ÛÙ[™×NTĞÒRK‘Ù]İš[™ÊÔŞ\İ[K’SË‘š[WN”™XY[]\Ê	šY[Ô]
+KLŠBˆYˆ
+IÚYÛ˜]\™K”İ\ÕÚ]
+”’Q‘ˆŠH[Üˆ	ÚYÛ˜]\™K”İXœİš[™Ê
+H[™HU’HŠHÂˆ›İÈ‘[\˜Ú]›È\ØØ\™ØYÈ›ÈY[™H[˜HØX™XÙ\˜HU’H°è[YKˆ‚ˆB‚ˆÈZ™Xİ]H[Z\Û[È›Z›ÈÓHÛÛˆ]Ûˆ[ˆ[[›™\‹ˆH\XØXÚpìÛ‚ˆÈ[\\]Y]YHXHY[™HİH›ÜXHYX˜HH[šXÚX[^˜XÚpìÛˆ\œšX˜NÈ\ğëBˆÈHØ\\˜H›È\[™HHH™Y\™XØÚpìÛˆİİ]Üİ\œˆHK]Ú[™İÙY‚ˆ]ÛˆXZ[‹œHK]\İ]šY[È	šY[Ô]K][\]H\İËÙš^\™\ËÓZ[™Z[X]Ü—ĞĞ—ÌKŒŒÒ[X[›ÚYĞ˜\ÙK›Z\›Ú™XİˆK[İ]]˜\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË›Z[Øš™XİˆKXØ[Xœ˜][Û‹][YHK\Û[Ûİ[[İ[Û‚ˆ	^]ÛÙHH	TÕVUÓÑBˆYˆ
+	^]ÛÙH[™H
+HÂˆYˆ
+\İT]	[[YSÙÊHÂˆÙ]PÛÛ[T]	[[YSÙÈUZ[ÌˆBˆ^]	^]ÛÙBˆB‚ˆ	™\Ü]H˜\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË™XYÛ›ÜİXÛËšœÛÛˆ‚ˆYˆ
+J\İT]	™\Ü]
+JHÂˆYˆ
+\İT]	[[YSÙÊHÈÙ]PÛÛ[T]	[[YSÙÈUZ[ÌBˆ›İÈ“›ÈÙHÙ[™\°ìÈ[[™›Ü›YHHXYÛ°ìÜİXÛËˆ‚ˆBˆYˆ
+J\İT]˜\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË›Z[Øš™XİŠJHÂˆ›İÈ“›ÈÙHÙ[™\°ìÈH[š[XXÚpìÛˆ›Z[Øš™Xİˆ‚ˆBˆ	™\ÜHÙ]PÛÛ[T]	™\Ü]T˜]ÈÛÛ™\œ›ÛKRœÛÛ‚ˆÜš]KRÜİ
+ÛØ™\\˜HHÜÙNˆÌIH0­È\Xİ[XÚ[Û™\ÎˆÌ_IH0­È‘ˆÌŸIH0­ÈÛÛ™šX[˜NˆÌßH0­ÈšYÈÛÛ\]ÎˆÍIH0­È˜[˜XÚÈÜœÛÎˆÍ_Hœ˜[Y\È0­ÈØ[ÜÈŒ0¬ˆÍŸH0­ÈÙ^Yœ˜[Y\ÎˆÍßHˆYˆ	™\Üš[™™\™[˜ÙKœÜÙWØÛİ™\˜YÙWÜ\˜Ù[	™\Üš[™™\™[˜ÙK˜ÛÛ\]WØ›ÙWØÛİ™\˜YÙWÜ\˜Ù[	™\Üœ™]\™Ù]š[XYÙWÌ™ØÛİ™\˜YÙWÜ\˜Ù[	™\Üš[™™\™[˜ÙK›YX[—İ˜XÚÙYÛ[™X\š×ØÛÛ™šY[˜ÙK	™\Üœ™]\™Ù]˜ÛÛ\]WÜšY×ØÛİ™\˜YÙWÜ\˜Ù[	™\Üœ™]\™Ù]ÜœÛ×Ùœ˜[YWÙ˜[˜XÚ×Ùœ˜[Y\Ë	™\Üœ™]\™Ù]›\™ÙWØÚ[›™[Üİ\×Ûİ™\—ÍŒÙYÜ™Y\Ë	™\Ü™^Üİ[ÚÙ^Yœ˜[Y\ÊBˆ]ÛˆXÈ™œ›ÛH[ØØ\Ø\˜[Y][Ûˆ[\ÜZ[İ˜[Y][Û—Ü›Ú™XİÈš[
+Z[İ˜[Y][Û—Ü›Ú™Xİ
+	İ\İËÙš^\™\ËÓZ[™Z[X]Ü—ĞĞ—ÌKŒŒÒ[X[›ÚYĞ˜\ÙK›Z\›Ú™Xİ	Ë	Ø\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË›Z[Øš™Xİ	Ë	Ø\Y˜XİËÔİ]™WÌMLÌ—İ˜[YXÚ[Û‹›Z\›Ú™Xİ	ËœÏLÌ
+JH‚ˆYˆ
+	TÕVUÓÑH[™H
+HÈ›İÈ“›ÈÙHYÈÛÛœİZ\ˆ[›ŞYXİÈ›Z\›Ú™Xİ\˜HZ[™KZ[X]Ü‹ˆˆBˆYˆ
+J\İT]˜\Y˜XİËÔİ]™WÌMLÌ—İ˜[YXÚ[Û‹›Z\›Ú™XİŠJHÈ›İÈ“›ÈÙHÙ[™\°ìÈ[›ŞYXİÈ›Z\›Ú™XİH˜[YXÚpìÛ‹ˆˆBˆYˆ
+J\İT]˜\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYËœÙYİZ[ZY[Ë›\ŠJHÂˆÜš]KUØ\›š[™È“›ÈÙHÙ[™\°ìÈHİ\\œÜÚXÚpìÛˆH˜XÚÚ[™È‘ÈÙHÛÛœÙ\˜\°è[ˆÜÈXYÛ°ìÜİXÛÜÈÑˆ‚ˆB‚ˆH˜[YNˆXœš\ˆH\ØÙ[˜H[š[XYH[ˆZ[™KZ[X]ÜˆÛÛ[][š]HZ[KŒŒˆÛÛ[YK[Û‹Y\œ›ÜˆYBˆÚ[ˆÜÚˆ[ˆˆ	\œ›ÜXİ[Û”™Y™\™[˜ÙHH”İÜ‚ˆHÂˆ	ÛÛÈHÛÛËÓZ[™Z[X]ÜÛÛ[][š]PZ[‚ˆ™]ËR][HR][U\H\™XİÜHQ›Ü˜ÙHT]	ÛÛÈİ]S[ˆ	\˜Ú]™HH›Ú[‹T]	ÛÛÈ“Z[™KZ[X]Ü‹Ğ‹ŒKŒŒš\‚ˆ	\›HšÎ‹ËÙÚ]X‹˜ÛÛKÔİÛÛÜ^‹ÓZ[™KR[X]Ü‹PÛÛ[][š]KPZ[Ü™[X\Ù\ËÙİÛ›ØYİŒKŒŒÓZ[™KZ[X]Ü‹Ğ‹ŒKŒŒš\‚ˆİ\›™^HKY˜Z[K[ØØ][ÛˆK\Ú[[K\ÚİËY\œ›ÜˆK\™]HÈK\™]KY[^HˆK[İ]]	\˜Ú]™H	\›ˆYˆ
+	TÕVUÓÑH[™H
+HÈ›İÈ“›ÈÙHYÈ\ØØ\™Ø\ˆZ[™KZ[X]ÜˆÛÛ[][š]HZ[KŒŒˆˆBˆ^[™P\˜Ú]™HT]	\˜Ú]™HQ\İ[˜][Û”]	ÛÛÈQ›Ü˜ÙBˆ	\HÙ]PÚ[][HT]	ÛÛÈQš[\ˆ“Z[™KZ[X]ÜˆĞ‹™^HˆT™Xİ\œÙHÙ[XİSØš™XİQš\œİBˆYˆ
+I\
+HÈ›İÈ“›ÈÙH[˜ÛÛ°ìÈZ[™KZ[X]ÜˆĞ‹™^H[›È[\]Y]KˆˆBˆ	›Ú™XİH
+™\ÛÛ™KT]˜\Y˜XİËÔİ]™WÌMLÌ—İ˜[YXÚ[Û‹›Z\›Ú™XİŠK”]ˆÜš]KRÜİXœšY[™È›ŞYXİÎˆ	›Ú™Xİ‚ˆ	›ØÙ\ÜÈHİ\T›ØÙ\ÜÈQš[T]	\‘[˜[YHUÛÜšÚ[™Ñ\™XİÜH	\‘\™XİÜS˜[YHP\™İ[Y[\İ˜‰›Ú™XİˆˆT\ÜÕBˆİ\TÛY\TÙXÛÛ™ÈBˆ	›ØÙ\ÜË”™Yœ™\Ú
 
-      - name: Recuperar pesos de los modelos
-        uses: actions/cache@v4
-        with:
-          path: .torch-windowed-smoke/hub/checkpoints
-          key: motionbert-windows-torchhub-${{ hashFiles('requirements-mmpose.txt', 'requirements-dev.txt') }}
-
-      - name: Ejecutar pruebas
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pytest -q
-
-      - name: Comprobar inicializaciÃ³n real de RTMPose y MotionBERT
-        shell: bash
-        env:
-          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
-        run: |
-          set -euo pipefail
-          python -c "from mocap_app.motionbert import create_motionbert_inferencer; engine=create_motionbert_inferencer(); assert hasattr(engine, 'inferencer'); print('RTMDet + RTMPose + MotionBERT inicializados correctamente en Windows')"
-
-      - name: Comprobar sintaxis
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m compileall -q main.py mocap_app tests
-
-      - name: Crear aplicaciÃ³n para Windows
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # MMEngine 0.10.7 busca primero configs y model-index.yml
-          # junto a la carpeta del paquete mmpose (PyInstaller: _internal).
-          # Se empaquetan juntos en esa raÃ­z para evitar depender de que
-          # PyInstaller conserve el directorio oculto .mim del wheel.
-          MMPOSE_MIM="$(python -c "from pathlib import Path; import mmpose; print(Path(mmpose.__file__).resolve().parent / '.mim')")"
-          test -d "$MMPOSE_MIM/configs"
-          test -f "$MMPOSE_MIM/model-index.yml"
-
-          python -m PyInstaller --noconfirm --clean --windowed \
-            --name MineimatorMotionCapture \
-            --collect-all cv2 \
-            --collect-all cv2_enumerate_cameras \
-            --collect-all PySide6 \
-            --collect-all torch \
-            --collect-all torchvision \
-            --collect-all mmcv \
-            --collect-all mmengine \
-            --collect-all mmdet \
-            --collect-all mmpose \
-            --collect-all xtcocotools \
-            --hidden-import mocap_app.video_test \
-            --add-data "$MMPOSE_MIM/configs;configs" \
-            --add-data "$MMPOSE_MIM/model-index.yml;." \
-            --add-data "$MMPOSE_MIM/dataset-index.yml;." \
-            main.py
-
-      - name: Verificar recursos incluidos en la aplicaciÃ³n
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          root = Path("dist/MineimatorMotionCapture")
-          # PyInstaller 6 stores the onedir runtime under _internal.
-          internal = root / "_internal"
-          assert internal.is_dir(), "Falta la carpeta _internal del ejecutable"
-
-          model_index = internal / "model-index.yml"
-          configs = internal / "configs"
-          assert model_index.is_file(), (
-              "Falta _internal/model-index.yml; MMEngine no podrÃ¡ resolver el alias human3d"
-          )
-          assert (configs / "body_3d_keypoint" / "motionbert" / "h36m"
-                  / "motionbert_h36m.yml").is_file(), (
-              "Falta el metafile de MotionBERT en _internal/configs"
-          )
-          assert (configs / "body_2d_keypoint" / "rtmpose" / "coco"
-                  / "rtmpose_coco.yml").is_file(), (
-              "Falta el metafile de RTMPose en _internal/configs"
-          )
-          assert (configs / "body_3d_keypoint" / "motionbert" / "h36m"
-                  / "motionbert_dstformer-ft-243frm_8xb32-120e_h36m.py").is_file(), (
-              "Falta la configuraciÃ³n Python de MotionBERT en _internal/configs"
-          )
-
-          print("Metadatos MMPose incluidos:", model_index)
-          print("Configuraciones MMPose incluidas:", configs)
-          PY
-
-
-      - name: Probar RTMPose y MotionBERT desde el ejecutable empaquetado
-        shell: bash
-        env:
-          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
-        run: |
-          set -euo pipefail
-          rm -f mmpose-smoke-test.log
-          # Reutiliza los pesos entre compilaciones. En la primera ejecuciÃ³n se
-          # descargan; GitHub Actions los guarda en cachÃ© si la prueba termina.
-          if ! ./dist/MineimatorMotionCapture/MineimatorMotionCapture.exe --smoke-test-mmpose; then
-            if [ -f mmpose-smoke-test.log ]; then
-              cat mmpose-smoke-test.log
-            else
-              echo "El ejecutable fallÃ³ en la prueba del motor y no generÃ³ un registro."
-            fi
-            exit 1
-          fi
-          test ! -f mmpose-smoke-test.log
-          echo "El ejecutable empaquetado inicializÃ³ RTMPose y MotionBERT correctamente."
-
-      - name: Procesar el video real y exportar la animaciÃ³n
-        shell: pwsh
-        env:
-          TORCH_HOME: ${{ github.workspace }}/.torch-windowed-smoke
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $exe = (Resolve-Path "dist/MineimatorMotionCapture/MineimatorMotionCapture.exe").Path
-          $runtimeLog = Join-Path $env:LOCALAPPDATA "NegativeStudios/MineimatorMotionCapture/logs/runtime.log"
-          Remove-Item $runtimeLog -Force -ErrorAction SilentlyContinue
-
-          # Descarga el video original compartido por el usuario desde Google Drive.
-          $videoPath = "artifacts/29532_prueba_normalizada.avi"
-          $videoUrl = "https://drive.google.com/uc?export=download&id=11U3yterKrCsQQ-AqrCdmTUBOMHRU4txm"
-          Write-Host "Descargando el video de prueba desde Google Drive..."
-          curl.exe --fail --location --silent --show-error --retry 3 --retry-delay 2 --output $videoPath $videoUrl
-          if ($LASTEXITCODE -ne 0) {
-            throw "No se pudo descargar el video original desde Google Drive."
-          }
-          $videoFile = Get-Item $videoPath
-          if ($videoFile.Length -ne 14444160) {
-            throw "El tamaÃ±o del video descargado no coincide con el archivo esperado: $($videoFile.Length) bytes."
-          }
-          $sha256 = (Get-FileHash -Algorithm SHA256 $videoPath).Hash.ToLowerInvariant()
-          if ($sha256 -ne '42f81e8d72c8df0dfb87ab52f73e1fc19f3ee33a6bfe1913d4b80b69d39514ec') {
-            throw "El SHA256 del video no coincide con el fixture autorizado: $sha256."
-          }
-          $signature = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($videoPath), 0, 12)
-          if (!$signature.StartsWith("RIFF") -or $signature.Substring(8, 4) -ne "AVI ") {
-            throw "El archivo descargado no tiene una cabecera AVI vÃ¡lida."
-          }
-
-          # Ejecuta el mismo flujo CLI con Python en el runner. La aplicaciÃ³n
-          # empaquetada ya tiene su propia prueba de inicializaciÃ³n arriba; asÃ­
-          # la captura no depende de la redirecciÃ³n stdout/stderr de --windowed.
-          python main.py --test-video $videoPath --template "tests/fixtures/Mineimator_CB_1.0.0/Humanoid_Base.miproject" --output "artifacts/Steve_29532_animado.miobject" --calibration-time 0.8 --smooth-motion
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) {
-            if (Test-Path $runtimeLog) {
-              Get-Content -Path $runtimeLog -Tail 300
-            }
-            exit $exitCode
-          }
-
-          $reportPath = "artifacts/Steve_29532_animado.diagnostico.json"
-          if (!(Test-Path $reportPath)) {
-            if (Test-Path $runtimeLog) { Get-Content -Path $runtimeLog -Tail 300 }
-            throw "No se generÃ³ el informe de diagnÃ³stico."
-          }
-          if (!(Test-Path "artifacts/Steve_29532_animado.miobject")) {
-            throw "No se generÃ³ la animaciÃ³n .miobject."
-          }
-          $report = Get-Content -Path $reportPath -Raw | ConvertFrom-Json
-          Write-Host ("Cobertura de pose: {0}% Â· articulaciones: {1}% Â· confianza: {2} Â· rig completo: {3}% Â· fallback torso: {4} frames Â· keyframes: {5}" -f $report.inference.pose_coverage_percent, $report.inference.complete_body_coverage_percent, $report.inference.mean_tracked_landmark_confidence, $report.retarget.complete_rig_coverage_percent, $report.retarget.torso_frame_fallback_frames, $report.export.total_keyframes)
-
-      - name: Publicar animaciÃ³n y diagnÃ³stico de la prueba
-        uses: actions/upload-artifact@v4
-        with:
-          name: MotionCapture-Regression-Animation
-          path: |
-            artifacts/Steve_29532_animado.miobject
-            artifacts/Steve_29532_animado.diagnostico.json
-            artifacts/Steve_29532_animado.poses.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publicar un Ãºnico ZIP descargable
-        uses: actions/upload-artifact@v4
-        with:
-          name: MineimatorMotionCapture-RTMPose-MotionBERT-Windows
-          path: dist/MineimatorMotionCapture/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Guardar el video real como fixture de regresiÃ³n
-        if: github.ref == 'refs/heads/feature/rtmpose-motionbert' && github.event_name == 'push'
-        shell: pwsh
-        run: |
-          $fixture = "tests/fixtures/Steve_29532/29532_normalizado_30fps.avi"
-          if (!(Test-Path $fixture)) {
-            Copy-Item "artifacts/29532_prueba_normalizada.avi" $fixture
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add $fixture
-            git commit -m "AÃ±ade video real de regresiÃ³n para Motion Capture"
-            git push origin "HEAD:$env:GITHUB_REF_NAME"
-          } else {
-            Write-Host "El video real ya estÃ¡ guardado en el repositorio."
-          }
+Bˆ	Ú[™İÔ›ØÙ\ÜÈHÙ]T›ØÙ\ÜÈÚ\™KSØš™XİÈ	Ë“XZ[•Ú[™İÒ[™H[™HX[™	Ë”›ØÙ\ÜÓ˜[YH[ZÙHŠ“Z[™KZ[X]ÜŠˆˆHÙ[XİSØš™XİQš\œİBˆYˆ
+IÚ[™İÔ›ØÙ\ÜÊHÂˆ	Ú[™İÔ›ØÙ\ÜÈHÙ]T›ØÙ\ÜÈÚ\™KSØš™XİÈ	Ë“XZ[•Ú[™İÒ[™H[™HX[™	Ë”İ\[YHYÙH	›ØÙ\ÜË”İ\[YHHÙ[XİSØš™XİQš\œİBˆBˆYˆ
+IÚ[™İÔ›ØÙ\ÜÊHÈ›İÈ“Z[™KZ[X]Üˆ›È[Üİ°ìÈ[˜H™[[˜H][^˜X›Kˆ[›ØÙ\ÛÈ\›Z[°ìÈÈ›ÈYÈ[šXÚX[^˜\ˆİH[\™˜^ˆÜ°èYšXØKˆˆB‚ˆYU\HP\ÜÙ[X›S˜[YHŞ\İ[K‘˜]Ú[™ÂˆYU\HP\ÜÙ[X›S˜[YHŞ\İ[K•Ú[™İÜË‘›Ü›\ÂˆYU\H‚ˆ\Ú[™ÈŞ\İ[NÂˆ\Ú[™ÈŞ\İ[K”[[YK’[\›ÜÙ\šXÙ\ÎÂˆÔİXİ^[İ]
+^[İ]Ú[™”Ù\]Y[X[
+WHX›XÈİXİZ[™Z[X]Ü”™XİÈX›XÈ[YÈX›XÈ[ÜÈX›XÈ[šYÚÈX›XÈ[›İÛNÈBˆX›XÈİ]XÈÛ\ÜÈZ[™Z[X]ÜØ\\™S˜]]™HÂˆÑ[\Ü
+\Ù\ŒÌ‹™ŠWHX›XÈİ]XÈ^\›ˆ›ÛÛÙ]Ú[™İÔ™Xİ
+[ˆÛ™İ]Z[™Z[X]Ü”™Xİ™Xİ
+NÂˆÑ[\Ü
+\Ù\ŒÌ‹™ŠWHX›XÈİ]XÈ^\›ˆ›ÛÛÙ]›Ü™YÜ›İ[™Ú[™İÊ[ˆÛ™
+NÂˆÑ[\Ü
+\Ù\ŒÌ‹™ŠWHX›XÈİ]XÈ^\›ˆ›ÛÛÚİÕÚ[™İÊ[ˆÛ™[ÛÛ[X[™
+NÂˆBˆˆ	[™HH	Ú[™İÔ›ØÙ\ÜË“XZ[•Ú[™İÒ[™BˆÓZ[™Z[X]ÜØ\\™S˜]]™WN”ÚİÕÚ[™İÊ	[™KÊHİ]S[ˆÓZ[™Z[X]ÜØ\\™S˜]]™WN”Ù]›Ü™YÜ›İ[™Ú[™İÊ	[™JHİ]S[ˆİ\TÛY\TÙXÛÛ™ÈÂˆ	™XİHÓZ[™Z[X]Ü”™XİN›™]Ê
+BˆYˆ
+VÓZ[™Z[X]ÜØ\\™S˜]]™WN‘Ù]Ú[™İÔ™Xİ
+	[™KÜ™Y—I™Xİ
+JHÈ›İÈ“›ÈÙHYÈØ[™\ˆ[[Xpì[ÈHH™[[˜HHZ[™KZ[X]Ü‹ˆˆBˆ	ØÜ™Y[ˆHÔŞ\İ[K•Ú[™İÜË‘›Ü›\Ë”ØÜ™Y[—N”š[X\TØÜ™Y[‹›İ[™Âˆ	YHÓX]N“X^
+	ØÜ™Y[‹“Y	™Xİ“Y
+Bˆ	ÜHÓX]N“X^
+	ØÜ™Y[‹•Ü	™Xİ•Ü
+Bˆ	šYÚHÓX]N“Z[Š	ØÜ™Y[‹”šYÚ	™Xİ”šYÚ
+Bˆ	›İÛHHÓX]N“Z[Š	ØÜ™Y[‹›İÛK	™Xİ›İÛJBˆ	ÚYH	šYÚH	Yˆ	ZYÚH	›İÛHH	ÜˆYˆ
+	ÚY[[Üˆ	ZYÚ[ÍŒ
+HÈ›İÈ“H™[[˜HHZ[™KZ[X]Üˆ]YY0ìÈY\˜H[0è\™XHš\ÚX›Nˆ	İÚY^	ÚZYÚKˆˆBˆ	Ø\\™Qœ˜[YHHÂˆ\˜[J	]	Y	Ü	ÚY	ZYÚ
+Bˆ	š]X\HÔŞ\İ[K‘˜]Ú[™Ëš]X\N›™]Ê	ÚY	ZYÚ
+Bˆ	Ü˜\XÜÈHÔŞ\İ[K‘˜]Ú[™Ë‘Ü˜\XÜ×N‘œ›ÛR[XYÙJ	š]X\
+Bˆ	Ü˜\XÜËÛÜQœ›ÛTØÜ™Y[Š	Y	ÜÔŞ\İ[K‘˜]Ú[™Ë”Ú^™WN›™]Ê	ÚY	ZYÚ
+JBˆ	š]X\”Ø]™J	]ÔŞ\İ[K‘˜]Ú[™Ë’[XYÚ[™Ë’[XYÙQ›Ü›X]N”™ÊBˆ	Ü˜\XÜË‘\ÜÜÙJ
+NÈ	š]X\‘\ÜÜÙJ
+BˆBˆ™]ËR][HR][U\H\™XİÜHQ›Ü˜ÙHT]\Y˜XİËÛZ[™Z[X]Üˆİ]S[ˆ	ˆ	Ø\\™Qœ˜[YH˜\Y˜XİËÛZ[™Z[X]Ü‹Ù\ØÙ[˜KZ[šXÚX[œ™Èˆ	Y	Ü	ÚY	ZYÚˆÜš]KRÜİ
+“Z[™KZ[X]ÜˆXœšpìÈH\ØÙ[˜Kˆ™[[˜NˆÌH0­ÈQˆÌ_H0­È[Xpì[ÎˆÌŸ^ÌßHˆYˆ	Ú[™İÔ›ØÙ\ÜË“XZ[•Ú[™İÕ]K	Ú[™İÔ›ØÙ\ÜË’Y	ÚY	ZYÚ
+BˆÔŞ\İ[K•Ú[™İÜË‘›Ü›\Ë”Ù[™Ù^\×N”Ù[™ØZ]
+ˆŠBˆİ\TÛY\TÙXÛÛ™Èˆ	ˆ	Ø\\™Qœ˜[YH˜\Y˜XİËÛZ[™Z[X]Ü‹Ü™\›ÙXØÚ[Û‹œ™Èˆ	Y	Ü	ÚY	ZYÚˆÔŞ\İ[K•Ú[™İÜË‘›Ü›\Ë”Ù[™Ù^\×N”Ù[™ØZ]
+ˆŠBˆ•0ë][Îˆ	
+	Ú[™İÔ›ØÙ\ÜË“XZ[•Ú[™İÕ]JX”Qˆ	
+	Ú[™İÔ›ØÙ\ÜË’Y
+X”›ŞYXİÎˆ	›Ú™XİØ\\˜\Îˆ\ØÙ[˜KZ[šXÚX[œ™Ë™\›ÙXØÚ[Û‹œ™ÈˆÙ]PÛÛ[\Y˜XİËÛZ[™Z[X]Ü‹Ü™\İ[YËˆHØ]ÚÂˆ	Èİ]Tİš[™ÈÙ]PÛÛ[\Y˜XİËÛZ[™Z[X]Ü‹Y\œ›Ü‹ˆÜš]KUØ\›š[™È“H˜[YXÚpìÛˆÜ°èYšXØHHZ[™KZ[X]Üˆ›ÈYÈÛÛ\]\œÙNˆ	È‚ˆ^]BˆB‚ˆH˜[YNˆX›XØ\ˆ]šY[˜ÚXHš\İX[HZ[™KZ[X]Ü‚ˆYˆ[Ø^\Ê
+Bˆ\Ù\ÎˆXİ[ÛœËİ\ØYX\Y˜XİˆÚ]‚ˆ˜[YNˆZ[™Z[X]Ü‹PÛÛ[][š]PZ[Uš\İX[PÚXÚÂˆ]ˆˆ\Y˜XİËÛZ[™Z[X]Ü‹Âˆ\Y˜XİËÛZ[™Z[X]Ü‹Y\œ›Ü‹ˆY‹[›ËYš[\ËY›İ[™ˆYÛ›Ü™Bˆ™][[Û‹Y^\ÎˆM‚ˆH˜[YNˆX›XØ\ˆ[š[XXÚpìÛˆHXYÛ°ìÜİXÛÈHHYX˜Bˆ\Ù\ÎˆXİ[ÛœËİ\ØYX\Y˜XİˆÚ]‚ˆ˜[YNˆ[İ[ÛØ\\™KT™YÜ™\ÜÚ[Û‹P[š[X][Û‚ˆ]ˆˆ\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË›Z[Øš™Xİˆ\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYË™XYÛ›ÜİXÛËšœÛÛ‚ˆ\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYËœÜÙ\ËšœÛÛ‚ˆ\Y˜XİËÔİ]™WÌMLÌ—Ø[š[XYËœÙYİZ[ZY[Ë›\ˆ\Y˜XİËÔİ]™WÌMLÌ—İ˜[YXÚ[Û‹›Z\›Ú™XİˆY‹[›ËYš[\ËY›İ[™ˆ\œ›Ü‚ˆ™][[Û‹Y^\ÎˆM‚ˆH˜[YNˆX›XØ\ˆ[ˆ0î›šXÛÈ’T\ØØ\™ØX›Bˆ\Ù\ÎˆXİ[ÛœËİ\ØYX\Y˜XİˆÚ]‚ˆ˜[YNˆZ[™Z[X]Ü“[İ[ÛØ\\™KT•TÜÙKS[İ[Û‘T•UÚ[™İÜÂˆ]ˆ\İÓZ[™Z[X]Ü“[İ[ÛØ\\™KÂˆY‹[›ËYš[\ËY›İ[™ˆ\œ›Ü‚ˆ™][[Û‹Y^\ÎˆM‚ˆH˜[YNˆİX\™\ˆ[šY[È™X[ÛÛ[Èš^\™HH™YÜ™\ÚpìÛ‚ˆYˆÚ]X‹œ™YˆOH	Ü™YœËÚXYËÙ™X]\™KÜ\ÜÙK[[İ[Û˜™\	È	‰ˆÚ]X‹™]™[Û˜[YHOH	Ü\Ú	ÂˆÚ[ˆÜÚˆ[ˆˆ	š^\™HH\İËÙš^\™\ËÔİ]™WÌMLÌ‹ÌMLÌ—Û›Ü›X[^˜Y×ÌÌœË˜]šH‚ˆYˆ
+J\İT]	š^\™JJHÂˆÛÜKR][H˜\Y˜XİËÌMLÌ—ÜYX˜WÛ›Ü›X[^˜YK˜]šHˆ	š^\™BˆÚ]ÛÛ™šYÈ\Ù\‹›˜[YH™Ú]X‹XXİ[ÛœÖØ›İH‚ˆÚ]ÛÛ™šYÈ\Ù\‹™[XZ[NNŠÙÚ]X‹XXİ[ÛœÖØ›İP\Ù\œË››Ü™\K™Ú]X‹˜ÛÛH‚ˆÚ]Y	š^\™BˆÚ]ÛÛ[Z][HpìXYHšY[È™X[H™YÜ™\ÚpìÛˆ\˜H[İ[ÛˆØ\\™H‚ˆÚ]\ÚÜšYÚ[ˆ’PQ‰[‘ÒUP—Ô‘Q—ÓSQH‚ˆH[ÙHÂˆÜš]KRÜİ‘[šY[È™X[XH\İ0èHİX\™YÈ[ˆ[™\ÜÚ]Üš[Ëˆ‚ˆB

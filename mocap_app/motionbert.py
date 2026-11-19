@@ -48,333 +48,125 @@ def _mmpose_metadata_directory(package_path: str | Path) -> Path | None:
 
 
 def _validate_mmpose_config_assets(mmpose_module) -> Path:
-    """Fail with actionable paths before MMEngine raises an opaque lookup error."""
-    package_dir = Path(next(iter(mmpose_module.__path__))).resolve()
-    metadata_dir = _mmpose_metadata_directory(package_dir)
-    if metadata_dir is None:
-        repo_configs = package_dir.parent / "configs"
-        repo_index = package_dir.parent / "model-index.yml"
-        mim_configs = package_dir / ".mim" / "configs"
-        mim_index = package_dir / ".mim" / "model-index.yml"
-        raise FileNotFoundError(
-            "Faltan los recursos de configuraciÃ³n de MMPose. "
-            "MMEngine necesita configs y model-index.yml juntos. "
-            f"Ruta del paquete: {package_dir}. "
-            f"Revisado: {repo_configs} y {repo_index}; "
-            f"{mim_configs} y {mim_index}. "
-            "Vuelve a descargar el paquete completo de la aplicaciÃ³n."
-        )
-    return metadata_dir
+    """Fail with actiÕÈZ®Ëkºwµçkz»§Â+a…æş
+Ş§ûZŠWè­û¥–‹­¦ë]Ú\ÙH^Xİ]\ÈHÑˆÈ˜XÚØ›Û™HÚXÙH
+›Ü›X[
+ÈZ\œ›Ü™Y[œ]
+H›Üˆ]™\Hœ˜[YK‚ˆN‚ˆ\İØÙ™ÖÈ™›\İ\İ—HH˜[ÙBˆ^Ù\
+\Q\œ›Ü‹]šX]Q\œ›Ü‹Ù^Q\œ›ÜŠN‚ˆÙ]]Š\İØÙ™Ë™›\İ\İ‹˜[ÙJB‚ˆYˆ\Ú[œİ[˜ÙJ\İØÙ™ËXİ
+N‚ˆ™]\›ˆ\İØÙ™Ë™Ù]
+™›\İ\İŠH\È˜[ÙBˆ™]\›ˆÙ]]Š\İØÙ™Ë™›\İ\İ‹›Û™JH\È˜[ÙB‚‚™YˆÜ™X]WÛ[İ[Û˜™\Ú[™™\™[˜Ù\Š
+N‚ˆˆˆ“ØYHÛÛ\]H‘
+ÈÑ[™™\™[˜ÙHİXÚÈ™Y›Ü™H™XÛÜ™[™È\È[˜X›Yˆˆˆ‚ˆN‚ˆ[\Ü[\ÜÙBˆœ›ÛH[\ÜÙK˜\\È[\ÜSTÜÙR[™™\™[˜Ù\‚ˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆ˜Z\ÙH[[YQ\œ›ÜŠˆ“›ÈÙHYÈ[\Ü\ˆSTÜÙKˆÛÛ\YX˜H\È\[™[˜ÚX\ÈH‚ˆˆ”•TÜÙK•Q]H[İ[Û‘T•ˆ][NˆÙ^ßH‚ˆ
+Hœ›ÛH^Â‚ˆN‚ˆY]Y]WÙ\ˆHİ˜[Y]WÛ[\ÜÙWØÛÛ™šY×Ø\ÜÙ]Ê[\ÜÙJBˆš[
+ˆÛÛ™šYİ\˜XÚ[Û™\ÈSTÜÙH]XİY\È[ˆÛY]Y]WÙ\ŸHŠBˆ[™™\™[˜Ù\ˆHSTÜÙR[™™\™[˜Ù\Š
+Š—Û[İ[Û˜™\Ú[™™\™[˜Ù\—ÚİØ\™ÜÊ
+JBˆYˆÙ\ØX›WÛ[İ[Û˜™\Ù›\İ\İ
+[™™\™[˜Ù\ŠN‚ˆš[
+ˆ“[İ[Û‘T•ˆ›\]\İ\ØXİ]˜YÈ\˜H]š]\ˆ[˜HÙYİ[™H‚ˆœ\ØYHÑÜˆ›İÙÜ˜[XH[ˆÔKˆ‚ˆ
+Bˆ™]\›ˆ[™™\™[˜Ù\‚ˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆ˜Z\ÙH[[YQ\œ›ÜŠˆ“›ÈÙHYY\›Ûˆ[šXÚX[^˜\ˆÜÈ[Ù[ÜÈ•TÜÙKÓ[İ[Û‘T•ˆ‚ˆÛÛ\YX˜HHÛÛ™^pìÛˆH[\›™]\˜H\ØØ\™Ø\ˆÜÈ\ÛÜÈ‚ˆˆ›Hš[Y\˜H™^ˆH™]š\ØHH[œİ[XÚpìÛˆHÜ[“SSX‹ˆ][NˆÙ^ßH‚ˆ
+Hœ›ÛH^Â‚‚™YˆÜ™\Ù]Ú[™™\™[˜Ù\—ÜÙ\ÜÚ[ÛŠ[™™\™[˜Ù\ŠHOˆ›Û™N‚ˆˆˆ”™[[İ™H[\Ü˜[˜XÚÚ[™ËÜÙ\]Y[˜ÙHİ]H™]ÙY[ˆ[™\[™[™XÛÜ™[™ÜËˆˆˆ‚ˆ˜XÚÙ[™HÙ]]Š[™™\™[˜Ù\‹š[™™\™[˜Ù\ˆ‹›Û™JHÜˆ[™™\™[˜Ù\‚ˆY™™\ˆHÙ]]Š˜XÚÙ[™—ØY™™\ˆ‹›Û™JBˆYˆ\Ø]ŠY™™\‹˜ÛX\ˆŠN‚ˆY™™\‹˜ÛX\Š
+BˆYˆ\Ø]Š˜XÚÙ[™—İšY[×Ú[œ]ŠN‚ˆ˜XÚÙ[™—İšY[×Ú[œ]H˜[ÙBˆYˆ\Ø]Š[™™\™[˜Ù\‹—İšY[×Ú[œ]ŠN‚ˆ[™™\™[˜Ù\‹—İšY[×Ú[œ]H˜[ÙB‚‚‚™Yˆ™\Ø[\WØØ\\™Wİ[Y\İ[\ÊˆØ\\™Yİ[Y\İ[\Îˆ]\˜X›VÙ›Ø]KˆœÎˆ›Ø]HQUSÕ’QS×Ñ”ËŠHOˆ\VÛ\İÚ[K\İÙ›Ø]WN‚ˆˆˆ”Ù[XİÛİ\˜ÙHœ˜[Y\ÈÛˆH[šY›Ü›H[Y[[™H›Üˆ[İ[Û‘T•šY[È[œ]ˆˆˆ‚ˆÛİ\˜ÙWİ[Y\ÈHÙ›Ø]
+˜[YJH›Üˆ˜[YH[ˆØ\\™Yİ[Y\İ[\×BˆYˆ›İÛİ\˜ÙWİ[Y\Î‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“HØ\\˜H›ÈÛÛY[™HX\˜Ø\ÈHY[\ËˆŠBˆYˆ›İ\Ùš[š]JœÊHÜˆœÈH‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“Hœ™XİY[˜ÚXHH™XÛÛœİXØÚpìÛˆX™HÙ\ˆX^[Üˆ]YHÙ\›ËˆŠBˆYˆ[J›İ\Ùš[š]J˜[YJH›Üˆ˜[YH[ˆÛİ\˜ÙWİ[Y\ÊN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“HØ\\˜HÛÛY[™HX\˜Ø\ÈHY[\È›Èš[š]\ËˆŠBˆYˆ[Jİ\œ™[H™]š[İ\È›Üˆ™]š[İ\Ëİ\œ™[[ˆš\
+Ûİ\˜ÙWİ[Y\ËÛİ\˜ÙWİ[Y\ÖÌN—JJN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“\ÈX\˜Ø\ÈHY[\ÈHHØ\\˜HX™[ˆÙ\ˆÜ™XÚY[\ËˆŠB‚ˆ[\˜[HKŒÈœÂˆ\˜][ÛˆHÛİ\˜ÙWİ[Y\ÖËLWHHÛİ\˜ÙWİ[Y\ÖÌBˆØ[\WØÛİ[HX^
+K›ÛÜŠ\˜][Ûˆ
+ˆœÈ
+ÈYKNJH
+ÈJBˆ\™Ù]İ[Y\ÈHÂˆÛİ\˜ÙWİ[Y\ÖÌH
+È[™^
+ˆ[\˜[ˆ›Üˆ[™^[ˆ˜[™ÙJØ[\WØÛİ[
+BˆB‚ˆÛİ\˜ÙWÚ[™XÙ\Îˆ\İÚ[HH×BˆÛİ\˜ÙWÚ[™^Hˆ›Üˆ\™Ù]İ[YH[ˆ\™Ù]İ[Y\Î‚ˆÚ[H
+ˆÛİ\˜ÙWÚ[™^
+ÈH[ŠÛİ\˜ÙWİ[Y\ÊBˆ[™
+ˆXœÊÛİ\˜ÙWİ[Y\ÖÜÛİ\˜ÙWÚ[™^
+ÈWHH\™Ù]İ[YJH
+ÈYKNBˆXœÊÛİ\˜ÙWİ[Y\ÖÜÛİ\˜ÙWÚ[™^HH\™Ù]İ[YJBˆ
+Bˆ
+N‚ˆÛİ\˜ÙWÚ[™^
+ÏHBˆÛİ\˜ÙWÚ[™XÙ\Ë˜\[™
+Ûİ\˜ÙWÚ[™^
+B‚ˆ™]\›ˆÛİ\˜ÙWÚ[™XÙ\Ë\™Ù]İ[Y\Â‚‚™YˆX\ÚÍ›WÚÙ^\Ú[×İ×ÜÜÙJÙ^\Ú[ËÙ^\Ú[ÜØÛÜ™\ÏS›Û™JHOˆXİ‚ˆˆˆÛÛ™\STÜÙH[X[ŒË“HÑ›Ú[ÈÈH[™X\šÈQÈ\ÙYH™]\™Ù]œKˆˆˆ‚ˆÚ[ÈHœ˜\Ø\œ˜^JÙ^\Ú[Ë\O[œ™›Ø]ÌŠBˆÚ[ÈHœœÜ]YY^™JÚ[ÊBˆYˆÚ[ËœÚ\HOH
+MËÊN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠˆˆ“[İ[Û‘T•]›ÛšpìÈ[˜HÜÙHÑÛÛˆ›Ü›XHÜÚ[ËœÚ\_NÈÙH\Ü\˜X˜H
+MËÊKˆ‚ˆ
+BˆYˆ›İœš\Ùš[š]JÚ[ÊK˜[
 
+N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“[İ[Û‘T•]›ÛšpìÈÛÛÜ™[˜Y\ÈÑ›Èš[š]\ËˆŠB‚ˆYˆÙ^\Ú[ÜØÛÜ™\È\È›Û™N‚ˆØÛÜ™\ÈHœ›Û™\ÊMË\O[œ™›Ø]ÌŠBˆ[ÙN‚ˆØÛÜ™\ÈHœ˜\Ø\œ˜^JÙ^\Ú[ÜØÛÜ™\Ë\O[œ™›Ø]ÌŠKœÜ]YY^™J
+BˆYˆØÛÜ™\ËœÚ\HOH
+MË
+HÜˆ›İœš\Ùš[š]JØÛÜ™\ÊK˜[
 
-def _motionbert_inferencer_kwargs(platform_name: str | None = None) -> dict:
-    """Build a CPU-friendly MMPose configuration for the current OS."""
-    system = platform_name or platform.system()
-    kwargs = {"pose3d": "human3d", "device": "cpu"}
+N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“[İ[Û‘T•]›ÛšpìÈ[XXÚ[Û™\ÈH\Xİ[XÚpìÛˆ[°è[Y\ËˆŠBˆØÛÜ™\ÈHœ˜Û\
+ØÛÜ™\ËŒKŒ
+B‚ˆÈÜÙLÑ[™™\™[˜Ù\ˆ™[Ü™\œÈ[X[ŒË“HÛÛÜ™[˜]\ÈÈØØ[Y\˜HZYÚˆÈ\H[™™YØ]\È[™\ˆÛÛ™\]Øİ[Y[Yİ]]˜XÚÈÂˆÈH™]\™Ù]\‰ÜÈÛÛ™[[ÛˆšYÚHİÛ‹ˆİØ\™HØ[Y\˜H
+VŠK‚ˆØ[Y\˜WÜÚ[ÈHœ˜ÛÛ[[—ÜİXÚÊˆ
+\Ú[ÖÎ‹K\Ú[ÖÎ‹—K\Ú[ÖÎ‹WJBˆ
+K˜\İ\Jœ™›Ø]Ì‹ÛÜOQ˜[ÙJB‚ˆÛÜ›HÖÌŒŒŒŒŒH›ÜˆÈ[ˆ˜[™ÙJÌÊWBˆ›ÜˆÛİ\˜ÙWÚ[™^\™Ù]Ú[™^[ˆÍ“WÕ×ÓS‘PT’ÔËš][\Ê
+N‚ˆKˆHØ[Y\˜WÜÚ[ÖÜÛİ\˜ÙWÚ[™^BˆÛÛ™šY[˜ÙHH›Ø]
+ØÛÜ™\ÖÜÛİ\˜ÙWÚ[™^JBˆÛÜ›İ\™Ù]Ú[™^HHÙ›Ø]
+
+K›Ø]
+JK›Ø]
+ŠKÛÛ™šY[˜ÙKÛÛ™šY[˜ÙWB‚ˆ™XÚÈHØ[Y\˜WÜÚ[ÖÎWBˆXYHØ[Y\˜WÜÚ[ÖÌLBˆXYØÛÛ™šY[˜ÙHH›Ø]
+Z[ŠØÛÜ™\ÖÎWKØÛÜ™\ÖÌLJJB‚ˆÈ[X[ŒË“HÙ\È›İÛÛZ[ˆ˜XÚX[[™X\šÜËˆ™\Ù\™HH™X[™XÚÈ[™ˆÈXYXÙ[\ˆÜÚ][ÛœÈ\ÈHYXØ]Y^\È[œİXYÙˆŞ[\Ú^š[™ÈH›ÜÙBˆÈ[™X\œÈœ›ÛHHÚİ[\œÈ[™™YY[™ÈÜÙH\›Ş[X][ÛœÈ[ÈBˆÈ˜XÚX[™]\™Ù]\‹‚ˆXYØ^\ÈHÂˆ›™XÚÈˆÙ›Ø]
+ŠH›Üˆˆ[ˆ™XÚ×KˆšXYˆÙ›Ø]
+ŠH›Üˆˆ[ˆXYKˆ˜ÛÛ™šY[˜ÙHˆXYØÛÛ™šY[˜ÙKˆBˆ™]\›ˆÈÛÜ›ˆÛÜ›š[XYÙHˆ×KšXYØ^\ÈˆXYØ^\ßB‚‚™YˆÜ™YXİ[Û—Ú[œİ[˜ÙJ™\İ[ˆXİ
+N‚ˆYˆ›İ\Ú[œİ[˜ÙJ™\İ[Xİ
+N‚ˆ™]\›ˆ›Û™Bˆ˜]Ú\ÈH™\İ[™Ù]
+œ™YXİ[ÛœÈŠHÜˆ×BˆYˆ›İ\Ú[œİ[˜ÙJ˜]Ú\Ë
+\İ\JJN‚ˆ™]\›ˆ›Û™B‚ˆ›Üˆ˜]Ú[ˆ˜]Ú\Î‚ˆØ[™Y]\ÈH˜]ÚYˆ\Ú[œİ[˜ÙJ˜]Ú
+\İ\JJH[ÙHØ˜]ÚBˆ›ÜˆØ[™Y]H[ˆØ[™Y]\Î‚ˆYˆ
+ˆ\Ú[œİ[˜ÙJØ[™Y]KXİ
+Bˆ[™Ø[™Y]K™Ù]
+šÙ^\Ú[ÈŠH\È›İ›Û™Bˆ
+N‚ˆ™]\›ˆØ[™Y]Bˆ™]\›ˆ›Û™B‚‚™YˆØÛØÛ×ÜØÛÜ™\×İ×ÚÍ›JØÛÜ™\ÊHOˆœ›™\œ˜^H›Û™N‚ˆˆˆÛÛ™\•TÜÙHÓĞÓÈÛÛ™šY[˜ÙHØÛÜ™\ÈÈ[İ[Û‘T•	ÜÈÍ“H›Ú[Ü™\‹ˆˆˆ‚ˆ˜[Y\ÈHœ˜\Ø\œ˜^JØÛÜ™\Ë\O[œ™›Ø]ÌŠKœÜ]YY^™J
+BˆYˆ˜[Y\ËœÚ\HOH
+MË
+HÜˆ›İœš\Ùš[š]J˜[Y\ÊK˜[
 
-    # This application captures one person who must remain fully visible and
-    # centered. On Windows, use the complete image as the person crop instead
-    # of running a heavyweight detector on every frame. Other systems retain
-    # the RTMDet-M detector from the human3d alias.
-    if system.lower().startswith("win"):
-        kwargs["det_model"] = "whole_image"
-    return kwargs
+N‚ˆ™]\›ˆ›Û™Bˆ˜[Y\ÈHœ˜Û\
+˜[Y\ËŒKŒ
+B‚ˆÈX]ÚSTÜÙIÜÈİÛˆÓĞÓÈOˆ[X[ŒË“HÙ^\Ú[ÛÛ™\œÚ[Û‹ˆÛÛ\ÜÚ]BˆÈ›Ú[È\ÙHHÙXZÙ\ˆÛİ\˜ÙHÛÛ™šY[˜ÙHÛÈØØÛYY›Ú[Èİ^HİË‚ˆÍ›HHœ™\›ÜÊMË\O[œ™›Ø]ÌŠBˆÍ›VÌHHZ[Š˜[Y\ÖÌLWK˜[Y\ÖÌL—JHÈ[š\Èœ›ÛH›İ\ÂˆÍ›VÖÌK‹ËK—WHH˜[Y\ÖÖÌL‹MM‹LKLËMWWBˆÍ›VÎHHZ[Š˜[Y\ÖÍWK˜[Y\ÖÍ—JHÈÜ˜^œ›ÛH›İÚİ[\œÂˆÍ›VÍ×HHZ[ŠÍ›VÌKÍ›VÎJHÈÜ[™Hœ›ÛH[š\È[™Ü˜^ˆÍ›VÎWHH˜[Y\ÖÌHÈ™XÚÈœ›ÛH›ÜÙBˆÍ›VÌLHHZ[Š˜[Y\ÖÌWK˜[Y\ÖÌ—JHÈXYœ›ÛH›İ^Y\ÂˆÍ›VÖÌLKL‹LËMMKM—WHH˜[Y\ÖÖÍKËK‹LWBˆ™]\›ˆÍ›B‚‚™YˆØİ\œ™[ÜÜÙL™ÚÍ›WÜØÛÜ™\Ê[™™\™[˜Ù\ŠHOˆœ›™\œ˜^H›Û™N‚ˆˆˆ”™XYHİ\œ™[œ˜[YIÜÈ•TÜÙHØÛÜ™\Èœ›ÛHSTÜÙIÜÈ‘Y™™\‹ˆˆˆ‚ˆ˜XÚÙ[™HÙ]]Š[™™\™[˜Ù\‹š[™™\™[˜Ù\ˆ‹›Û™JHÜˆ[™™\™[˜Ù\‚ˆÜÙL™Û[Ù[HÙ]]Š˜XÚÙ[™œÜÙL™Û[Ù[‹›Û™JBˆ[Ù[HÙ]]ŠÜÙL™Û[Ù[›[Ù[‹›Û™JBˆY]Y]HHÙ]]Š[Ù[™]\Ù]ÛY]H‹›Û™JBˆ]\Ù]Û˜[YHHY]Y]K™Ù]
+™]\Ù]Û˜[YHŠHYˆ\Ø]ŠY]Y]K™Ù]ŠH[ÙH›Û™BˆYˆ]\Ù]Û˜[YH›İ[ˆÈ˜ÛØÛÈ‹œÜÙ]˜XÚÌNŸN‚ˆ™]\›ˆ›Û™B‚ˆY™™\ˆHÙ]]Š˜XÚÙ[™—ØY™™\ˆ‹ßJBˆœ˜[Y\ÈHY™™\‹™Ù]
+œÜÙWÙ\İÜ™\İ[×Û\İŠHYˆ\Ø]ŠY™™\‹™Ù]ŠH[ÙH›Û™BˆYˆ›İœ˜[Y\ÈÜˆ›İœ˜[Y\ÖËLWN‚ˆ™]\›ˆ›Û™Bˆ[œİ[˜Ù\ÈHœ˜[Y\ÖËLWBˆØ[\HH[œİ[˜Ù\ÖÌBˆ™YÚ[œİ[˜Ù\ÈHÙ]]ŠØ[\Kœ™YÚ[œİ[˜Ù\È‹›Û™JBˆØÛÜ™\ÈHÙ]]Š™YÚ[œİ[˜Ù\ËšÙ^\Ú[ÜØÛÜ™\È‹›Û™JBˆYˆØÛÜ™\È\È›Û™N‚ˆ™]\›ˆ›Û™Bˆ™]\›ˆØÛØÛ×ÜØÛÜ™\×İ×ÚÍ›JØÛÜ™\ÊB‚‚™YˆØİ\œ™[ÜÜÙL™Ú[XYÙWÛ[™X\šÜÊ[™™\™[˜Ù\ŠHOˆ\İÛ\İÙ›Ø]WH›Û™N‚ˆˆˆ”™XY•TÜÙHÓĞÓÈÙ^\Ú[È[ˆÛİ\˜ÙKZ[XYÙH^[ÛÛÜ™[˜]\Ëˆˆˆ‚ˆ˜XÚÙ[™HÙ]]Š[™™\™[˜Ù\‹š[™™\™[˜Ù\ˆ‹›Û™JHÜˆ[™™\™[˜Ù\‚ˆÜÙL™Û[Ù[HÙ]]Š˜XÚÙ[™œÜÙL™Û[Ù[‹›Û™JBˆ[Ù[HÙ]]ŠÜÙL™Û[Ù[›[Ù[‹›Û™JBˆY]Y]HHÙ]]Š[Ù[™]\Ù]ÛY]H‹›Û™JBˆ]\Ù]Û˜[YHHY]Y]K™Ù]
+™]\Ù]Û˜[YHŠHYˆ\Ø]ŠY]Y]K™Ù]ŠH[ÙH›Û™BˆYˆ]\Ù]Û˜[YH›İ[ˆÈ˜ÛØÛÈ‹œÜÙ]˜XÚÌNŸN‚ˆ™]\›ˆ›Û™B‚ˆY™™\ˆHÙ]]Š˜XÚÙ[™—ØY™™\ˆ‹ßJBˆœ˜[Y\ÈHY™™\‹™Ù]
+œÜÙWÙ\İÜ™\İ[×Û\İŠHYˆ\Ø]ŠY™™\‹™Ù]ŠH[ÙH›Û™BˆYˆ›İœ˜[Y\ÈÜˆ›İœ˜[Y\ÖËLWN‚ˆ™]\›ˆ›Û™BˆØ[\HHœ˜[Y\ÖËLWVÌBˆ™YÚ[œİ[˜Ù\ÈHÙ]]ŠØ[\Kœ™YÚ[œİ[˜Ù\È‹›Û™JBˆÙ^\Ú[ÈHÙ]]Š™YÚ[œİ[˜Ù\ËšÙ^\Ú[È‹›Û™JBˆYˆÙ^\Ú[È\È›Û™N‚ˆ™]\›ˆ›Û™BˆÚ[ÈHœ˜\Ø\œ˜^JÙ^\Ú[Ë\O[œ™›Ø]ÌŠKœÜ]YY^™J
+BˆYˆÚ[ËœÚ\HOH
+MËŠHÜˆ›İœš\Ùš[š]JÚ[ÊK˜[
 
+N‚ˆ™]\›ˆ›Û™B‚ˆØÛÜ™\ÈHÙ]]Š™YÚ[œİ[˜Ù\ËšÙ^\Ú[ÜØÛÜ™\È‹›Û™JBˆYˆØÛÜ™\È\È›Û™N‚ˆÛÛ™šY[˜ÙHHœ›Û™\ÊMË\O[œ™›Ø]ÌŠBˆ[ÙN‚ˆÛÛ™šY[˜ÙHHœ˜\Ø\œ˜^JØÛÜ™\Ë\O[œ™›Ø]ÌŠKœÜ]YY^™J
+BˆYˆÛÛ™šY[˜ÙKœÚ\HOH
+MË
+HÜˆ›İœš\Ùš[š]JÛÛ™šY[˜ÙJK˜[
 
-def _disable_motionbert_flip_test(inferencer) -> bool:
-    """Avoid the second mirrored DSTFormer pass when running on CPU."""
-    backend = getattr(inferencer, "inferencer", None) or inferencer
-    model = getattr(backend, "model", None)
-    test_cfg = getattr(model, "test_cfg", None)
-    if test_cfg is None:
-        return False
-
-    # PoseLifter reads this same test_cfg on every predict() call. The official
-    # MotionBERT config enables flip_test, which otherwise executes the 3D
-    # backbone twice (normal + mirrored input) for every frame.
-    try:
-        test_cfg["flip_test"] = False
-    except (TypeError, AttributeError, KeyError):
-        setattr(test_cfg, "flip_test", False)
-
-    if isinstance(test_cfg, dict):
-        return test_cfg.get("flip_test") is False
-    return getattr(test_cfg, "flip_test", None) is False
-
-
-def create_motionbert_inferencer():
-    """Load the complete 2D + 3D inference stack before recording is enabled."""
-    try:
-        import mmpose
-        from mmpose.apis import MMPoseInferencer
-    except Exception as exc:
-        raise RuntimeError(
-            "No se pudo importar MMPose. Comprueba las dependencias de "
-            f"RTMPose, RTMDet y MotionBERT. Detalle: {exc}"
-        ) from exc
-
-    try:
-        metadata_dir = _validate_mmpose_config_assets(mmpose)
-        print(f"Configuraciones MMPose detectadas en: {metadata_dir}")
-        inferencer = MMPoseInferencer(**_motionbert_inferencer_kwargs())
-        if _disable_motionbert_flip_test(inferencer):
-            print(
-                "MotionBERT: flip-test desactivado para evitar una segunda "
-                "pasada 3D por fotograma en CPU."
-            )
-        return inferencer
-    except Exception as exc:
-        raise RuntimeError(
-            "No se pudieron inicializar los modelos RTMPose/MotionBERT. "
-            "Comprueba la conexiÃ³n a Internet para descargar los pesos "
-            f"la primera vez y revisa la instalaciÃ³n de OpenMMLab. Detalle: {exc}"
-        ) from exc
-
-
-def _reset_inferencer_session(inferencer) -> None:
-    """Remove temporal tracking/sequence state between independent recordings."""
-    backend = getattr(inferencer, "inferencer", None) or inferencer
-    buffer = getattr(backend, "_buffer", None)
-    if hasattr(buffer, "clear"):
-        buffer.clear()
-    if hasattr(backend, "_video_input"):
-        backend._video_input = False
-    if hasattr(inferencer, "_video_input"):
-        inferencer._video_input = False
-
-
-
-def resample_capture_timestamps(
-    captured_timestamps: Iterable[float],
-    fps: float = DEFAULT_VIDEO_FPS,
-) -> tuple[list[int], list[float]]:
-    """Select source frames on a uniform timeline for MotionBERT video input."""
-    source_times = [float(value) for value in captured_timestamps]
-    if not source_times:
-        raise ValueError("La captura no contiene marcas de tiempo.")
-    if not isfinite(fps) or fps <= 0:
-        raise ValueError("La frecuencia de reconstrucciÃ³n debe ser mayor que cero.")
-    if any(not isfinite(value) for value in source_times):
-        raise ValueError("La captura contiene marcas de tiempo no finitas.")
-    if any(current <= previous for previous, current in zip(source_times, source_times[1:])):
-        raise ValueError("Las marcas de tiempo de la captura deben ser crecientes.")
-
-    interval = 1.0 / fps
-    duration = source_times[-1] - source_times[0]
-    sample_count = max(1, floor(duration * fps + 1e-9) + 1)
-    target_times = [
-        source_times[0] + index * interval
-        for index in range(sample_count)
-    ]
-
-    source_indices: list[int] = []
-    source_index = 0
-    for target_time in target_times:
-        while (
-            source_index + 1 < len(source_times)
-            and (
-                abs(source_times[source_index + 1] - target_time) + 1e-9
-                < abs(source_times[source_index] - target_time)
-            )
-        ):
-            source_index += 1
-        source_indices.append(source_index)
-
-    return source_indices, target_times
-
-
-def map_h36m_keypoints_to_pose(keypoints, keypoint_scores=None) -> dict:
-    """Convert MMPose Human3.6M 3D joints to the landmark IDs used by retarget.py."""
-    points = np.asarray(keypoints, dtype=np.float32)
-    points = np.squeeze(points)
-    if points.shape != (17, 3):
-        raise ValueError(
-            f"MotionBERT devolviÃ³ una pose 3D con forma {points.shape}; se esperaba (17, 3)."
-        )
-    if not np.isfinite(points).all():
-        raise ValueError("MotionBERT devolviÃ³ coordenadas 3D no finitas.")
-
-    if keypoint_scores is None:
-        scores = np.ones(17, dtype=np.float32)
-    else:
-        scores = np.asarray(keypoint_scores, dtype=np.float32).squeeze()
-        if scores.shape != (17,) or not np.isfinite(scores).all():
-            raise ValueError("MotionBERT devolviÃ³ puntuaciones de articulaciÃ³n invÃ¡lidas.")
-        scores = np.clip(scores, 0.0, 1.0)
-
-    # Pose3DInferencer reorders Human3.6M coordinates to [camera X, height,
-    # depth] and negates X and depth. Convert that documented output back to
-    # the retargeter's convention: X right, Y down, Z toward the camera (-Z).
-    camera_points = np.column_stack(
-        (-points[:, 0], -points[:, 2], -points[:, 1])
-    ).astype(np.float32, copy=False)
-
-    world = [[0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(33)]
-    for source_index, target_index in H36M_TO_LANDMARKS.items():
-        x, y, z = camera_points[source_index]
-        confidence = float(scores[source_index])
-        world[target_index] = [float(x), float(y), float(z), confidence, confidence]
-
-    neck = camera_points[9]
-    head = camera_points[10]
-    left_shoulder = camera_points[11]
-    right_shoulder = camera_points[14]
-    shoulder_axis = right_shoulder - left_shoulder
-
-    # Human3.6M has head and neck joints, but no nose or ears. Approximate
-    # the face direction from the neck-to-head vector and derive a lateral
-    # head axis from the shoulders. These are helper landmarks, not detections.
-    nose = head + (head - neck) * 0.30
-    ear_offset = shoulder_axis * 0.12
-    face_confidence = float(min(scores[9], scores[10]))
-    ear_confidence = float(min(scores[10], scores[11], scores[14]))
-    world[0] = [float(v) for v in nose] + [face_confidence, face_confidence]
-    world[7] = [float(v) for v in (head - ear_offset)] + [ear_confidence, ear_confidence]
-    world[8] = [float(v) for v in (head + ear_offset)] + [ear_confidence, ear_confidence]
-
-    return {"world": world, "image": []}
-
-
-def _prediction_instance(result: dict):
-    if not isinstance(result, dict):
-        return None
-    batches = result.get("predictions") or []
-    if not isinstance(batches, (list, tuple)):
-        return None
-
-    for batch in batches:
-        candidates = batch if isinstance(batch, (list, tuple)) else [batch]
-        for candidate in candidates:
-            if (
-                isinstance(candidate, dict)
-                and candidate.get("keypoints") is not None
-            ):
-                return candidate
-    return None
-
-
-def _coco_scores_to_h36m(scores) -> np.ndarray | None:
-    """Convert RTMPose COCO confidence scores to MotionBERT's H36M joint order."""
-    values = np.asarray(scores, dtype=np.float32).squeeze()
-    if values.shape != (17,) or not np.isfinite(values).all():
-        return None
-    values = np.clip(values, 0.0, 1.0)
-
-    # Match MMPose's own COCO -> Human3.6M keypoint conversion. Composite
-    # joints use the weaker source confidence so occluded joints stay low.
-    h36m = np.zeros(17, dtype=np.float32)
-    h36m[0] = min(values[11], values[12])  # pelvis from both hips
-    h36m[[1, 2, 3, 4, 5, 6]] = values[[12, 14, 16, 11, 13, 15]]
-    h36m[8] = min(values[5], values[6])  # thorax from both shoulders
-    h36m[7] = min(h36m[0], h36m[8])  # spine from pelvis and thorax
-    h36m[9] = values[0]  # neck from nose
-    h36m[10] = min(values[1], values[2])  # head from both eyes
-    h36m[[11, 12, 13, 14, 15, 16]] = values[[5, 7, 9, 6, 8, 10]]
-    return h36m
-
-
-def _current_pose2d_h36m_scores(inferencer) -> np.ndarray | None:
-    """Read the current frame's RTMPose scores from MMPose's 2D buffer."""
-    backend = getattr(inferencer, "inferencer", None) or inferencer
-    pose2d_model = getattr(backend, "pose2d_model", None)
-    model = getattr(pose2d_model, "model", None)
-    metadata = getattr(model, "dataset_meta", None)
-    dataset_name = metadata.get("dataset_name") if hasattr(metadata, "get") else None
-    if dataset_name not in {"coco", "posetrack18"}:
-        return None
-
-    buffer = getattr(backend, "_buffer", {})
-    frames = buffer.get("pose_est_results_list") if hasattr(buffer, "get") else None
-    if not frames or not frames[-1]:
-        return None
-    instances = frames[-1]
-    sample = instances[0]
-    pred_instances = getattr(sample, "pred_instances", None)
-    scores = getattr(pred_instances, "keypoint_scores", None)
-    if scores is None:
-        return None
-    return _coco_scores_to_h36m(scores)
-
-
-def process_motionbert_video(
-    video_path: str | Path,
-    timestamps: Iterable[float],
-    pose_callback: Callable[[dict, float], None],
-    status_callback: Callable[[str], None],
-    inferencer=None,
-    progress_callback: Callable[[int, int, float, float], None] | None = None,
-) -> int:
-    """Run MMPose human3d over a clip and align each result to its source time."""
-    captured_times = [float(value) for value in timestamps]
-    if not captured_times:
-        return 0
-    if any(not isfinite(value) for value in captured_times):
-        raise ValueError("La secuencia contiene marcas de tiempo no finitas.")
-    if any(
-        current <= previous
-        for previous, current in zip(captured_times, captured_times[1:])
-    ):
-        raise ValueError("Las marcas de tiempo de la captura deben ser crecientes.")
-
-    pose_inferencer = inferencer or create_motionbert_inferencer()
-    _reset_inferencer_session(pose_inferencer)
-
-    status_callback("Reconstruyendo el movimiento 3D con MotionBERT...")
-    count = 0
-    frame_index = 0
-    processing_started = time.monotonic()
-    try:
-        for result in pose_inferencer(str(video_path)):
-            if frame_index >= len(captured_times):
-                raise RuntimeError(
-                    "MMPose devolviÃ³ mÃ¡s fotogramas que los registrados en la captura. "
-                    "Se detuvo para evitar desajustar la animaciÃ³n."
-                )
-            captured_at = captured_times[frame_index]
-            frame_index += 1
-
-            # Show useful progress during CPU inference, including an ETA.
-            if frame_index % 15 == 0 or frame_index == len(captured_times):
-                elapsed = max(0.001, time.monotonic() - processing_started)
-                processed_fps = frame_index / elapsed
-                remaining = max(0, len(captured_times) - frame_index) / max(
-                    processed_fps, 0.001
-                )
-                remaining_minutes, remaining_seconds = divmod(int(remaining), 60)
-                status_callback(
-                    f"MotionBERT: {frame_index}/{len(captured_times)} fotogramas "
-                    f"analizados Â· {processed_fps:.1f} FPS Â· "
-                    f"restan aprox. {remaining_minutes:02d}:{remaining_seconds:02d}"
-                )
-                if progress_callback is not None:
-                    progress_callback(
-                        frame_index,
-                        len(captured_times),
-                        processed_fps,
-                        remaining,
-                    )
-
-            instance = _prediction_instance(result)
-            if instance is None:
-                continue
-            # The 3D inferencer can emit placeholder scores of 1.0.
-            # Prefer the confidence values from the RTMPose 2D detections.
-            keypoint_scores = _current_pose2d_h36m_scores(pose_inferencer)
-            if keypoint_scores is None:
-                keypoint_scores = instance.get("keypoint_scores")
-            pose = map_h36m_keypoints_to_pose(
-                instance["keypoints"],
-                keypoint_scores,
-            )
-            pose_callback(pose, captured_at)
-            count += 1
-    finally:
-        # MMPose 1.3.2's unified wrapper does not clear Pose3DInferencer's
-        # sequence buffer between calls, so explicitly isolate each recording.
-        _reset_inferencer_session(pose_inferencer)
-
-    if frame_index == 0:
-        raise RuntimeError(
-            "MMPose no pudo leer ningÃºn fotograma del vÃ­deo temporal."
-        )
-    return count
+N‚ˆÛÛ™šY[˜ÙHHœ›Û™\ÊMË\O[œ™›Ø]ÌŠBˆÛÛ™šY[˜ÙHHœ˜Û\
+ÛÛ™šY[˜ÙKŒKŒ
+Bˆ™]\›ˆÂˆÙ›Ø]
+Ú[ÖÚ[™^JK›Ø]
+Ú[ÖÚ[™^WJK›Ø]
+ÛÛ™šY[˜ÙVÚ[™^JWBˆ›Üˆ[™^[ˆ˜[™ÙJMÊBˆB‚‚™Yˆ›ØÙ\Ü×Û[İ[Û˜™\İšY[ÊˆšY[×Ü]ˆİˆ]ˆ[Y\İ[\Îˆ]\˜X›VÙ›Ø]KˆÜÙWØØ[˜XÚÎˆØ[X›VÖÙXİ›Ø]K›Û™WKˆİ]\×ØØ[˜XÚÎˆØ[X›VÖÜİ—K›Û™WKˆ[™™\™[˜Ù\S›Û™Kˆ›ÙÜ™\Ü×ØØ[˜XÚÎˆØ[X›VÖÚ[[›Ø]›Ø]K›Û™WH›Û™HH›Û™KŠHOˆ[‚ˆˆˆ”[ˆSTÜÙH[X[ŒÙİ™\ˆHÛ\[™[YÛˆXXÚ™\İ[È]ÈÛİ\˜ÙH[YKˆˆˆ‚ˆØ\\™Yİ[Y\ÈHÙ›Ø]
+˜[YJH›Üˆ˜[YH[ˆ[Y\İ[\×BˆYˆ›İØ\\™Yİ[Y\Î‚ˆ™]\›ˆˆYˆ[J›İ\Ùš[š]J˜[YJH›Üˆ˜[YH[ˆØ\\™Yİ[Y\ÊN‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“HÙXİY[˜ÚXHÛÛY[™HX\˜Ø\ÈHY[\È›Èš[š]\ËˆŠBˆYˆ[Jˆİ\œ™[H™]š[İ\Âˆ›Üˆ™]š[İ\Ëİ\œ™[[ˆš\
+Ø\\™Yİ[Y\ËØ\\™Yİ[Y\ÖÌN—JBˆ
+N‚ˆ˜Z\ÙH˜[YQ\œ›ÜŠ“\ÈX\˜Ø\ÈHY[\ÈHHØ\\˜HX™[ˆÙ\ˆÜ™XÚY[\ËˆŠB‚ˆÜÙWÚ[™™\™[˜Ù\ˆH[™™\™[˜Ù\ˆÜˆÜ™X]WÛ[İ[Û˜™\Ú[™™\™[˜Ù\Š
+BˆÜ™\Ù]Ú[™™\™[˜Ù\—ÜÙ\ÜÚ[ÛŠÜÙWÚ[™™\™[˜Ù\ŠB‚ˆİ]\×ØØ[˜XÚÊ”™XÛÛœİ^Y[™È[[İš[ZY[ÈÑÛÛˆ[İ[Û‘T•‹‹ˆŠBˆÛİ[Hˆœ˜[YWÚ[™^Hˆ›ØÙ\ÜÚ[™×Üİ\YH[YK›[Û›İÛšXÊ
+BˆN‚ˆ›Üˆ™\İ[[ˆÜÙWÚ[™™\™[˜Ù\ŠİŠšY[×Ü]
+JN‚ˆYˆœ˜[YWÚ[™^H[ŠØ\\™Yİ[Y\ÊN‚ˆ˜Z\ÙH[[YQ\œ›ÜŠˆ“STÜÙH]›ÛšpìÈpè\È›İÙÜ˜[X\È]YHÜÈ™YÚ\İ˜YÜÈ[ˆHØ\\˜Kˆ‚ˆ”ÙH]]›È\˜H]š]\ˆ\ØZ\İ\ˆH[š[XXÚpìÛ‹ˆ‚ˆ
+BˆØ\\™YØ]HØ\\™Yİ[Y\ÖÙœ˜[YWÚ[™^Bˆœ˜[YWÚ[™^
+ÏHB‚ˆÈÚİÈ\ÙY[›ÙÜ™\ÜÈ\š[™ÈÔH[™™\™[˜ÙK[˜ÛY[™È[ˆUK‚ˆYˆœ˜[YWÚ[™^	HMHOHÜˆœ˜[YWÚ[™^OH[ŠØ\\™Yİ[Y\ÊN‚ˆ[\ÙYHX^
+ŒK[YK›[Û›İÛšXÊ
+HH›ØÙ\ÜÚ[™×Üİ\Y
+Bˆ›ØÙ\ÜÙYÙœÈHœ˜[YWÚ[™^È[\ÙYˆ™[XZ[š[™ÈHX^
+[ŠØ\\™Yİ[Y\ÊHHœ˜[YWÚ[™^
+HÈX^
+ˆ›ØÙ\ÜÙYÙœËŒBˆ
+Bˆ™[XZ[š[™×ÛZ[]\Ë™[XZ[š[™×ÜÙXÛÛ™ÈH]›[Ù
+[
+™[XZ[š[™ÊKŒ
+Bˆİ]\×ØØ[˜XÚÊˆˆ“[İ[Û‘T•ˆÙœ˜[YWÚ[™^KŞÛ[ŠØ\\™Yİ[Y\Ê_H›İÙÜ˜[X\È‚ˆˆ˜[˜[^˜YÜÈ0­ÈÜ›ØÙ\ÜÙYÙœÎ‹ŒYŸH”È0­È‚ˆˆœ™\İ[ˆ\›ŞˆÜ™[XZ[š[™×ÛZ[]\ÎŒ™NÜ™[XZ[š[™×ÜÙXÛÛ™ÎŒ™H‚ˆ
+BˆYˆ›ÙÜ™\Ü×ØØ[˜XÚÈ\È›İ›Û™N‚ˆ›ÙÜ™\Ü×ØØ[˜XÚÊˆœ˜[YWÚ[™^ˆ[ŠØ\\™Yİ[Y\ÊKˆ›ØÙ\ÜÙYÙœËˆ™[XZ[š[™Ëˆ
+B‚ˆ[œİ[˜ÙHHÜ™YXİ[Û—Ú[œİ[˜ÙJ™\İ[
+BˆYˆ[œİ[˜ÙH\È›Û™N‚ˆÛÛ[YBˆÈHÑ[™™\™[˜Ù\ˆØ[ˆ[Z]XÙZÛ\ˆØÛÜ™\ÈÙˆKŒ‚ˆÈ™Y™\ˆHÛÛ™šY[˜ÙH˜[Y\Èœ›ÛHH•TÜÙH‘]Xİ[ÛœË‚ˆÙ^\Ú[ÜØÛÜ™\ÈHØİ\œ™[ÜÜÙL™ÚÍ›WÜØÛÜ™\ÊÜÙWÚ[™™\™[˜Ù\ŠBˆYˆÙ^\Ú[ÜØÛÜ™\È\È›Û™N‚ˆÙ^\Ú[ÜØÛÜ™\ÈH[œİ[˜ÙK™Ù]
+šÙ^\Ú[ÜØÛÜ™\ÈŠBˆÜÙHHX\ÚÍ›WÚÙ^\Ú[×İ×ÜÜÙJˆ[œİ[˜ÙVÈšÙ^\Ú[È—KˆÙ^\Ú[ÜØÛÜ™\Ëˆ
+Bˆ[XYÙWÛ[™X\šÜÈHØİ\œ™[ÜÜÙL™Ú[XYÙWÛ[™X\šÜÊÜÙWÚ[™™\™[˜Ù\ŠBˆYˆ[XYÙWÛ[™X\šÜÈ\È›İ›Û™N‚ˆÜÙVÈš[XYÙH—HH[XYÙWÛ[™X\šÜÂˆÜÙWØØ[˜XÚÊÜÙKØ\\™YØ]
+BˆÛİ[
+ÏHBˆš[˜[N‚ˆÈSTÜÙHKŒËŒ‰ÜÈ[šYšYYÜ˜\\ˆÙ\È›İÛX\ˆÜÙLÑ[™™\™[˜Ù\‰ÜÂˆÈÙ\]Y[˜ÙHY™™\ˆ™]ÙY[ˆØ[ËÛÈ^XÚ]H\ÛÛ]HXXÚ™XÛÜ™[™Ë‚ˆÜ™\Ù]Ú[™™\™[˜Ù\—ÜÙ\ÜÚ[ÛŠÜÙWÚ[™™\™[˜Ù\ŠB‚ˆYˆœ˜[YWÚ[™^OH‚ˆ˜Z\ÙH[[YQ\œ›ÜŠˆ“STÜÙH›ÈYÈY\ˆš[™ğî›ˆ›İÙÜ˜[XH[°ëY[È[\Ü˜[ˆ‚ˆ
+Bˆ™]\›ˆÛİ[
