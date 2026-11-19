@@ -11,7 +11,7 @@ import cv2
 
 from .miobject import export_miobject, load_template
 from .motionbert import create_motionbert_inferencer, process_motionbert_video
-from .retarget import calculate_pose_controls
+from .retarget import WORLD_REFERENCE_FRAME, _torso_frame, calculate_pose_controls
 from .video import build_video_timeline
 
 
@@ -96,14 +96,31 @@ def _write_pose_diagnostics(
     output_path: Path,
     samples: list[tuple[float, dict[str, Any]]],
     calibration_pose: dict[str, Any],
-) -> Path:
-    """Persist raw 3D landmarks and retarget controls for regression review."""
+) -> tuple[Path, dict[str, Any]]:
+    """Persist raw landmarks, sequential controls and retarget coverage."""
     rows = []
+    part_counts = {part: 0 for part in CALIBRATION_PARTS}
+    fallback_frames = 0
+    previous_frame = _torso_frame(calibration_pose) or WORLD_REFERENCE_FRAME
     for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose, reference_pose=calibration_pose)
+        raw_frame = _torso_frame(pose)
+        current_frame = _torso_frame(pose, fallback_frame=previous_frame)
+        used_fallback = raw_frame is None and current_frame is not None
+        controls = calculate_pose_controls(
+            pose,
+            reference_pose=calibration_pose,
+            previous_frame=previous_frame,
+        )
+        if current_frame is not None:
+            previous_frame = current_frame
+        for part in part_counts:
+            if part in controls:
+                part_counts[part] += 1
+        fallback_frames += int(used_fallback)
         rows.append({
             "timestamp": round(float(timestamp), 6),
             "world": pose.get("world") or [],
+            "torso_frame_fallback": used_fallback,
             "controls": controls,
         })
     path = output_path.with_suffix(".poses.json")
@@ -113,7 +130,27 @@ def _write_pose_diagnostics(
         encoding="utf-8",
     )
     temporary.replace(path)
-    return path
+    total = max(1, len(samples))
+    coverage = {
+        part: {
+            "frames": count,
+            "coverage_percent": round(100.0 * count / total, 2),
+        }
+        for part, count in part_counts.items()
+    }
+    quality = {
+        "torso_frame_fallback_frames": fallback_frames,
+        "torso_frame_fallback_percent": round(100.0 * fallback_frames / total, 2),
+        "part_coverage": coverage,
+        "complete_rig_frames": sum(
+            1 for row in rows if CALIBRATION_PARTS.issubset(row["controls"])
+        ),
+        "complete_rig_coverage_percent": round(
+            100.0 * sum(1 for row in rows if CALIBRATION_PARTS.issubset(row["controls"])) / total,
+            2,
+        ),
+    }
+    return path, quality
 
 
 def run_video_test(
@@ -193,7 +230,9 @@ def run_video_test(
         samples, calibration_time
     )
     quality = _inference_quality(samples, frame_count)
-    poses_path = _write_pose_diagnostics(output_path, samples, calibration_pose)
+    poses_path, retarget_quality = _write_pose_diagnostics(
+        output_path, samples, calibration_pose
+    )
 
     print(
         f"Calibración neutral: {calibration_timestamp:.3f} s "
@@ -251,6 +290,7 @@ def run_video_test(
             "strategy": "nearest_complete_neutral_pose",
         },
         "pose_diagnostics_path": str(poses_path),
+        "retarget": retarget_quality,
         "export": {
             **export_result,
             "duration_seconds": round(float(export_result["duration"]), 6),
@@ -270,7 +310,9 @@ def run_video_test(
         f"Diagnóstico: {report_path}\n"
         f"Cobertura: {quality['pose_coverage_percent']}% · "
         f"confianza media: {quality['mean_tracked_landmark_confidence']} · "
-        f"keyframes: {export_result['total_keyframes']}",
+        f"keyframes: {export_result['total_keyframes']} · "
+        f"rig completo: {retarget_quality['complete_rig_coverage_percent']}% · "
+        f"fallback torso: {retarget_quality['torso_frame_fallback_frames']} frames",
         flush=True,
     )
     for warning in warnings:
