@@ -81,6 +81,11 @@ def main() -> int:
     if "--smoke-test-mmpose" in sys.argv:
         return _run_mmpose_smoke_test()
 
+    if "--test-video" in sys.argv:
+        from mocap_app.video_test import main as run_video_test
+
+        return run_video_test(sys.argv[1:])
+
     from PySide6.QtWidgets import QApplication
 
     from mocap_app.main_window import MainWindow
