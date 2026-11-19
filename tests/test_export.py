@@ -8,6 +8,7 @@ from mocap_app.miobject import (
     _shape_motion_delta,
     _smooth,
     export_miobject,
+    load_template,
 )
 from mocap_app.retarget import (
     WORLD_REFERENCE_FRAME,
@@ -530,3 +531,74 @@ def test_export_uses_an_explicit_neutral_pose_for_initial_raised_arms(tmp_path):
     assert abs(right_arm["0"]["ROT_Z"]) > 30.0
     assert abs(left_arm["30"]["ROT_Z"]) < 1.0
     assert abs(right_arm["30"]["ROT_Z"]) < 1.0
+
+
+
+def test_torso_frame_uses_previous_heading_when_both_widths_collapse():
+    neutral = standing_pose()
+    previous = _torso_frame(neutral)
+    assert previous is not None
+
+    collapsed = standing_pose()
+    collapsed["world"][11][0] = -0.01
+    collapsed["world"][12][0] = 0.01
+    collapsed["world"][23][0] = -0.01
+    collapsed["world"][24][0] = 0.01
+
+    assert _torso_frame(collapsed) is None
+    recovered = _torso_frame(collapsed, fallback_frame=previous)
+    assert recovered is not None
+    assert recovered[0] == pytest.approx(previous[0], abs=1e-6)
+
+    controls = calculate_pose_controls(
+        collapsed,
+        reference_pose=neutral,
+        previous_frame=previous,
+    )
+    assert {"body", "head", "left_arm", "right_arm"}.issubset(controls)
+
+
+def test_export_keeps_torso_and_arm_channels_during_profile_width_collapse(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+
+    neutral = standing_pose()
+    collapsed = standing_pose()
+    collapsed["world"][11][0] = -0.01
+    collapsed["world"][12][0] = 0.01
+    collapsed["world"][23][0] = -0.01
+    collapsed["world"][24][0] = 0.01
+
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, neutral), (1 / 30, collapsed), (2 / 30, collapsed), (3 / 30, neutral)],
+        fps=30,
+        duration_seconds=0.1,
+        optimize_keyframes=False,
+        calibration_pose=neutral,
+    )
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    for part in ("body", "head", "left_arm", "right_arm"):
+        keys = timeline_for(exported, part)["keyframes"]
+        assert "1" in keys
+        assert "2" in keys
+
+
+def test_load_template_accepts_user_mineimator_project_fixture():
+    fixture = (
+        __import__("pathlib").Path(__file__).parent
+        / "fixtures" / "Mineimator_CB_1.0.0" / "Humanoid_Base.miproject"
+    )
+    data = load_template(fixture)
+
+    assert data["format"] == 35
+    assert "project" not in data
+    assert "render" not in data
+    assert "background" not in data
+    assert all(
+        not item.get("keyframes")
+        for item in data["timelines"]
+        if item.get("type") == "bodypart"
+    )
