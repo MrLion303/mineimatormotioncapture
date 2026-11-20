@@ -31,7 +31,7 @@ Para evitar doble transformación, los canales manuales de giro/flexión de braz
 
 Para la dirección y flexión visible de las piernas, la imagen 2D es la señal principal. La profundidad estimada de los landmarks 3D solo aporta una contribución pequeña y limitada, porque la profundidad monocular puede hacer que una pierna visualmente recta parezca doblada. La cadera, la rodilla y el tobillo se calculan por separado; no se fuerza una flexión constante ni se aplana la pose cuando una pierna se levanta.
 
-La posición de la raíz se calcula con las caderas en coordenadas de imagen para el movimiento horizontal y con el tobillo más bajo para mantener el apoyo. La traslación global se exporta en la pista `char`; los objetivos y polos IK, como hijos de `char`, acompañan esa traslación. La profundidad global absoluta no se infiere de una webcam RGB, así que el desplazamiento de raíz en Z permanece en cero en la ruta 2D.
+La posición de la raíz se calcula con las caderas en coordenadas de imagen para el movimiento horizontal y con el tobillo más bajo para mantener el apoyo. La escala usa las 32 unidades de modelo del Steve estándar (dos bloques de 16 unidades); usar la altura métrica de 1.8 metros como si fueran unidades de Mine-imator reduciría la corrección de raíz casi 18 veces y dejaría los pies separados del suelo. La traslación global se exporta en la pista `char`; los objetivos y polos IK, como hijos de `char`, acompañan esa traslación. La profundidad global absoluta no se infiere de una webcam RGB, así que el desplazamiento de raíz en Z permanece en cero en la ruta 2D.
 
 ## Calibración y tiempo
 
