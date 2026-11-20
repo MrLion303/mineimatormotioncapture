@@ -9,8 +9,8 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; el giro horizontal se exporta en el canal nativo `BEND_ANGLE_Z`, conforme al rig de referencia de Mine-imator.
 - Los brazos se expresan en el marco local actual del torso, evitando duplicar el giro del torso en los brazos.
 - La cabeza usa `ROT_X` y `ROT_Z`; el torso usa `BEND_ANGLE_X/Y/Z` con el yaw asignado a `BEND_ANGLE_Z`.
-- Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la orientación usa el giro mínimo del hueso proximal y evita que el movimiento de la muñeca produzca vueltas axiales falsas.
-- Se reduce la respuesta de las piernas y se aplica una zona muerta pequeña para evitar que la vibración del tracking se convierta en pasos exagerados.
+- Brazos y piernas se orientan desde la dirección 3D del hueso proximal con dos grados de libertad observables; la flexión del codo y la rodilla se calcula por separado y no se inventa torsión axial.
+- Se conserva la amplitud original de los movimientos de piernas; el ruido se controla mediante suavizado temporal, sin recortar los pasos capturados.
 - El suavizado combina mediana temporal y un filtro adaptativo tipo One Euro: amortigua saltos aislados y conserva movimientos rápidos.
 - El torso usa su primer marco 3D como referencia; brazos y piernas conservan su pose local desde el primer fotograma, incluso si el video comienza a mitad de un gesto. La cabeza se calibra por separado para compensar el offset anatómico de nariz y orejas.
 - La pista `char` se congela en su primer transform. No se generan desplazamientos ni rotaciones globales.
@@ -47,7 +47,7 @@ python main.py
 7. Al terminar, la aplicación procesa las muestras pendientes.
 8. Exporta un nuevo .miobject.
 
-El retargeting construye una orientación 3D del torso a partir de los ejes de hombros y caderas. Usa la primera postura corporal completa como referencia; mantén una posición natural y quieta durante un instante al comenzar REC. Los brazos se calculan en relación con el torso actual, mientras que las piernas se mantienen relacionadas con la orientación inicial de la raíz. El exportador aplica una respuesta reducida a las piernas y un filtro adaptativo a las articulaciones. La posición del personaje sigue siendo la de la plantilla y la pista `char` se reduce al primer transform.
+El retargeting construye una orientación 3D del torso a partir de los ejes de hombros y caderas. Usa la primera postura corporal completa como referencia; mantén una posición natural y quieta durante un instante al comenzar REC. Los brazos se calculan en relación con el torso actual, mientras que las piernas se mantienen relacionadas con la orientación inicial de la raíz. La amplitud de las articulaciones se conserva y el filtro adaptativo reduce el ruido sin amortiguar artificialmente el gesto. La posición del personaje sigue siendo la de la plantilla y la pista `char` se reduce al primer transform.
 
 ## Compilación de Windows
 

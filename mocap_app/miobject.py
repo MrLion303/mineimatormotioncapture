@@ -21,17 +21,18 @@ PART_FIELDS = {
 KEYFRAME_ANGLE_THRESHOLD = 0.8
 MAX_KEYFRAME_INTERVAL_SECONDS = 0.15
 
+# Preserve measured leg amplitude; temporal smoothing handles tracking noise.
 LEG_MOTION_GAINS = {
-    "ROT_X": 0.72,
-    "ROT_Y": 0.72,
-    "ROT_Z": 0.72,
-    "BEND_ANGLE_X": 0.68,
-}
-LEG_MOTION_DEADZONES = {
     "ROT_X": 1.0,
     "ROT_Y": 1.0,
     "ROT_Z": 1.0,
-    "BEND_ANGLE_X": 1.5,
+    "BEND_ANGLE_X": 1.0,
+}
+LEG_MOTION_DEADZONES = {
+    "ROT_X": 0.0,
+    "ROT_Y": 0.0,
+    "ROT_Z": 0.0,
+    "BEND_ANGLE_X": 0.0,
 }
 
 
@@ -47,7 +48,7 @@ def _serialize_rotation_axes(fields: dict[str, float]) -> dict[str, float]:
 
 
 def _shape_motion_delta(part: str, field: str, value: float) -> float:
-    """Reduce small lower-body overreaction without suppressing large gestures."""
+    """Preserve the captured motion amplitude for every body part."""
     if part not in {"left_leg", "right_leg"}:
         return float(value)
     magnitude = abs(float(value))

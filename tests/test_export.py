@@ -490,11 +490,11 @@ def test_arms_stay_local_when_the_torso_turns():
             assert abs(controls[part][field] - original[part][field]) < 1.5
 
 
-def test_leg_motion_response_reduces_small_tracking_overreaction():
-    assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == 0.0
-    assert 0.0 < _shape_motion_delta("left_leg", "ROT_Z", 20.0) < 20.0
-    assert 0.0 < _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) < 20.0
-    assert _shape_motion_delta("body", "BEND_ANGLE_X", 20.0) == 20.0
+def test_leg_motion_keeps_the_captured_amplitude():
+    assert _shape_motion_delta("left_leg", "ROT_Z", 0.5) == pytest.approx(0.5)
+    assert _shape_motion_delta("left_leg", "ROT_Z", 20.0) == pytest.approx(20.0)
+    assert _shape_motion_delta("right_leg", "BEND_ANGLE_X", 20.0) == pytest.approx(20.0)
+    assert _shape_motion_delta("body", "BEND_ANGLE_X", 20.0) == pytest.approx(20.0)
 
 
 def test_robust_smoothing_rejects_single_frame_spike_but_keeps_motion():
@@ -671,7 +671,7 @@ def test_mineimator_rotation_file_fields_swap_y_and_z_only_when_serialized():
     assert semantic["ROT_Z"] == pytest.approx(43.0)
 
 
-def test_retarget_uses_three_rotation_axes_for_a_diagonal_limb_pose():
+def test_retarget_uses_observable_swing_axes_without_inventing_axial_twist():
     pose = standing_pose()
     pose["world"][13] = [-0.12, -0.93, 0.18, 1.0, 1.0]
     pose["world"][15] = [0.10, -0.62, -0.16, 1.0, 1.0]
@@ -680,9 +680,10 @@ def test_retarget_uses_three_rotation_axes_for_a_diagonal_limb_pose():
     arm = controls["left_arm"]
 
     assert set(arm) == {"ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"}
-    assert abs(arm["ROT_Y"]) > 2.0
     assert abs(arm["ROT_X"]) > 2.0
     assert abs(arm["ROT_Z"]) > 2.0
+    assert arm["ROT_Y"] == pytest.approx(0.0, abs=1e-8)
+    assert 0.0 <= arm["BEND_ANGLE_X"] <= 150.0
 
 
 def test_pose_sequence_keeps_limb_frame_continuity_through_straight_pose():

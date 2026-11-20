@@ -345,35 +345,29 @@ def _limb_controls(
     start_index,
     joint_index,
     end_index,
-    reference_matrix,
-    previous_angles=None,
+    parent_frame,
 ):
-    """Retarget one limb's upper-bone swing and independent hinge flexion."""
-    bone = _bone_frame(
-        pose,
-        start_index,
-        joint_index,
-        end_index,
-        reference_matrix,
-    )
-    if bone is None:
+    """Retarget the proximal-bone direction and the joint hinge separately.
+
+    The pose chain reveals the proximal bone's 3D direction and the bend at
+    the joint, but it does not reveal axial twist around that bone. Two swing
+    angles fully describe the direction; keep the unobservable third rotation
+    at zero instead of accumulating a false spin.
+    """
+    start = _point(pose, start_index)
+    joint = _point(pose, joint_index)
+    end = _point(pose, end_index)
+    if start is None or joint is None or end is None:
         return None
-    bone_matrix, upper_direction, lower_direction = bone
-    relative = reference_matrix.T @ bone_matrix
-    angle_y, angle_x, angle_z = _matrix_to_yxz(
-        relative,
-        previous_angles=previous_angles,
-    )
-    bend = degrees(acos(max(-1.0, min(1.0, -float(np.dot(
-        upper_direction, lower_direction
-    ))))))
+
+    angle_x, angle_z = _segment_rotation(start, joint, parent_frame)
+    bend = _bend_angle(start, joint, end)
     return {
         "ROT_X": angle_x,
-        "ROT_Y": angle_y,
+        "ROT_Y": 0.0,
         "ROT_Z": angle_z,
-        "BEND_ANGLE_X": max(0.0, min(150.0, bend)),
-    }, bone_matrix, (angle_y, angle_x, angle_z)
-
+        "BEND_ANGLE_X": bend,
+    }
 
 
 def _head_frame(pose, body_matrix, previous_frame=None):
@@ -469,18 +463,16 @@ def _controls_for_pose(
             "BEND_ANGLE_Z": yaw_y,
         }
 
+        torso_parent_frame = tuple(
+            current_matrix[:, axis] for axis in range(3)
+        )
         for part, indices in (
             ("left_arm", (11, 13, 15)),
             ("right_arm", (12, 14, 16)),
         ):
-            limb = _limb_controls(
-                pose, *indices, current_matrix,
-                previous_angles.get(part),
-            )
+            limb = _limb_controls(pose, *indices, torso_parent_frame)
             if limb is not None:
-                limb_controls, _bone_matrix, angles = limb
-                controls[part] = limb_controls
-                previous_angles[part] = angles
+                controls[part] = limb
 
         head = _head_controls(
             pose,
@@ -499,18 +491,16 @@ def _controls_for_pose(
     else:
         leg_matrix = reference_matrix
 
+    leg_parent_frame = tuple(
+        leg_matrix[:, axis] for axis in range(3)
+    )
     for part, indices in (
         ("left_leg", (23, 25, 27)),
         ("right_leg", (24, 26, 28)),
     ):
-        limb = _limb_controls(
-            pose, *indices, leg_matrix,
-            previous_angles.get(part),
-        )
+        limb = _limb_controls(pose, *indices, leg_parent_frame)
         if limb is not None:
-            limb_controls, _bone_matrix, angles = limb
-            controls[part] = limb_controls
-            previous_angles[part] = angles
+            controls[part] = limb
 
     return controls
 
