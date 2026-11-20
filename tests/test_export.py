@@ -1024,6 +1024,9 @@ def test_ik_targets_preserve_rig_segment_lengths_and_follow_the_wrist():
 
     assert np.linalg.norm(pole - start) == pytest.approx(4.0, abs=1e-5)
     assert np.linalg.norm(target - pole) == pytest.approx(6.0, abs=1e-5)
+    # The wrist is lower in the image than the shoulder, so its rig-local
+    # target must be lower (negative Y) than the shoulder anchor.
+    assert target[1] < start[1]
     assert np.linalg.norm(
         np.asarray(second_left_arm["target"]) - target
     ) > 0.5
@@ -1045,6 +1048,9 @@ def test_ik_leg_targets_use_screen_knee_geometry_and_12_unit_chain():
 
     assert np.linalg.norm(pole - start) == pytest.approx(6.0, abs=1e-5)
     assert np.linalg.norm(target - pole) == pytest.approx(6.0, abs=1e-5)
+    # The ankle is below the hip in the source image and must be below it
+    # in Mine-imator's character-local coordinate system as well.
+    assert target[1] < start[1]
     assert np.linalg.norm(
         np.asarray(sequence[1][1]["left_leg"]["target"]) - target
     ) > 0.5
