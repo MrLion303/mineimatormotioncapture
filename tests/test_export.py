@@ -10,6 +10,7 @@ from mocap_app.miobject import (
     _smooth,
     _serialize_rotation_axes,
     export_miobject,
+    IK_HELPER_CONFIG,
 )
 from mocap_app.retarget import (
     WORLD_REFERENCE_FRAME,
@@ -18,6 +19,7 @@ from mocap_app.retarget import (
     _matrix_to_yxz,
     calculate_pose_controls,
     calculate_pose_sequence,
+    calculate_ik_target_sequence,
 )
 
 
@@ -969,3 +971,108 @@ def test_supporting_foot_prevents_root_lift_when_only_one_ankle_moves():
     )
 
     assert sequence[-1][1]["root"]["POS_Y"] == pytest.approx(0.0, abs=1e-8)
+
+
+
+def _ik_pose(wrist_left=(0.48, 0.40), ankle_left=(0.44, 0.90)):
+    base = standing_pose()
+    return _with_image_landmarks(base, {
+        0: (0.5, 0.1),
+        11: (0.42, 0.3), 12: (0.58, 0.3),
+        13: (0.35, 0.42), 15: wrist_left,
+        14: (0.65, 0.42), 16: (0.52, 0.40),
+        23: (0.44, 0.5), 24: (0.56, 0.5),
+        25: (0.45, 0.68), 27: ankle_left,
+        26: (0.55, 0.68), 28: (0.56, 0.90),
+    })
+
+
+def test_ik_targets_preserve_rig_segment_lengths_and_follow_the_wrist():
+    first = _ik_pose()
+    second = _ik_pose(wrist_left=(0.50, 0.35))
+
+    sequence = calculate_ik_target_sequence(
+        [(0.0, first), (0.5, second)],
+        reference_pose=first,
+    )
+    first_left_arm = sequence[0][1]["left_arm"]
+    second_left_arm = sequence[1][1]["left_arm"]
+
+    start = np.asarray(first_left_arm["start"])
+    pole = np.asarray(first_left_arm["pole"])
+    target = np.asarray(first_left_arm["target"])
+
+    assert np.linalg.norm(pole - start) == pytest.approx(4.0, abs=1e-5)
+    assert np.linalg.norm(target - pole) == pytest.approx(6.0, abs=1e-5)
+    assert np.linalg.norm(
+        np.asarray(second_left_arm["target"]) - target
+    ) > 0.5
+    assert np.asarray(second_left_arm["pole"]) == pytest.approx(pole, abs=1e-5)
+
+
+def test_ik_leg_targets_use_screen_knee_geometry_and_12_unit_chain():
+    pose = _ik_pose(ankle_left=(0.44, 0.90))
+    bent = _ik_pose(ankle_left=(0.56, 0.76))
+
+    sequence = calculate_ik_target_sequence(
+        [(0.0, pose), (0.5, bent)],
+        reference_pose=pose,
+    )
+    leg = sequence[0][1]["left_leg"]
+    start = np.asarray(leg["start"])
+    pole = np.asarray(leg["pole"])
+    target = np.asarray(leg["target"])
+
+    assert np.linalg.norm(pole - start) == pytest.approx(6.0, abs=1e-5)
+    assert np.linalg.norm(target - pole) == pytest.approx(6.0, abs=1e-5)
+    assert np.linalg.norm(
+        np.asarray(sequence[1][1]["left_leg"]["target"]) - target
+    ) > 0.5
+
+
+def test_export_connects_all_four_limbs_to_native_ik_targets(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+
+    first = _ik_pose()
+    second = _ik_pose(wrist_left=(0.50, 0.35))
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, first), (0.5, second)],
+        fps=24,
+        duration_seconds=0.5,
+        optimize_keyframes=False,
+        smooth_motion=False,
+    )
+
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    cameras = {
+        timeline["id"]: timeline
+        for timeline in exported["timelines"]
+        if timeline.get("type") == "camera"
+    }
+    character = next(
+        timeline for timeline in exported["timelines"]
+        if timeline.get("type") == "char"
+    )
+
+    assert len(cameras) == 8
+    for part, helper in IK_HELPER_CONFIG.items():
+        limb = timeline_for(exported, part)
+        first_key = limb["keyframes"]["0"]
+        assert first_key["IK_TARGET"] == helper["target_id"]
+        assert first_key["IK_TARGET_ANGLE"] == helper["pole_id"]
+        assert first_key["IK_BLEND"] == pytest.approx(1.0)
+        assert first_key["IK_ANGLE_OFFSET"] == pytest.approx(0.0)
+
+        target_timeline = cameras[helper["target_id"]]
+        pole_timeline = cameras[helper["pole_id"]]
+        assert target_timeline["parent"] == character["id"]
+        assert pole_timeline["parent"] == character["id"]
+        assert target_timeline["hide"] is True
+        assert pole_timeline["hide"] is True
+        assert target_timeline["keyframes"]["0"] != target_timeline["keyframes"]["12"]
+
+    assert export_miobject.__name__ == "export_miobject"
