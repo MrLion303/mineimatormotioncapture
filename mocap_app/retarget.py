@@ -197,18 +197,66 @@ def _matrix_from_frame(frame):
     return np.column_stack(tuple(np.asarray(axis, dtype=float) for axis in frame))
 
 
-def _matrix_to_yxz(matrix) -> tuple[float, float, float]:
-    """Extract intrinsic Y-X-Z Euler angles, matching the Mine-imator HPE reference."""
+def _matrix_to_yxz(
+    matrix,
+    previous_angles: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float]:
+    """Extract continuous intrinsic Y-X-Z Euler angles from a rotation matrix.
+
+    A matrix has two equivalent non-singular Y-X-Z Euler solutions. Selecting
+    the principal branch independently each frame can flip Y/Z by 180 degrees
+    near a straight limb and let the later 360-degree unwrap accumulate a false
+    spin. Choose the equivalent solution closest to the previous frame. At
+    +/-90 degrees, Y and Z are coupled, so preserve previous Z and solve Y from
+    the observable combined angle.
+    """
     sin_x = max(-1.0, min(1.0, -float(matrix[1, 2])))
     angle_x = asin(sin_x)
     cos_x = sqrt(max(0.0, 1.0 - sin_x * sin_x))
-    if cos_x > 1e-7:
+
+    if cos_x > 1e-6:
         angle_y = atan2(float(matrix[0, 2]), float(matrix[2, 2]))
         angle_z = atan2(float(matrix[1, 0]), float(matrix[1, 1]))
-    else:
+        principal = np.degrees((angle_y, angle_x, angle_z))
+        if previous_angles is None:
+            return tuple(float(value) for value in principal)
+
+        previous = np.asarray(previous_angles, dtype=float)
+        alternative = np.asarray((
+            principal[0] + 180.0,
+            180.0 - principal[1],
+            principal[2] + 180.0,
+        ))
+        candidates = []
+        for candidate in (principal, alternative):
+            candidate = candidate + 360.0 * np.round((previous - candidate) / 360.0)
+            candidates.append(candidate)
+        best = min(
+            candidates,
+            key=lambda candidate: float(np.sum((candidate - previous) ** 2)),
+        )
+        return tuple(float(value) for value in best)
+
+    angle_x_degrees = degrees(angle_x)
+    if previous_angles is None:
         angle_y = atan2(-float(matrix[2, 0]), float(matrix[0, 0]))
-        angle_z = 0.0
-    return degrees(angle_y), degrees(angle_x), degrees(angle_z)
+        return degrees(angle_y), angle_x_degrees, 0.0
+
+    previous_y, _, previous_z = (float(value) for value in previous_angles)
+    if sin_x >= 0.0:
+        # At +90 degrees the observable combination is Y - Z.
+        combined = atan2(float(matrix[0, 1]), float(matrix[0, 0]))
+        angle_z_degrees = previous_z
+        angle_y_degrees = degrees(combined) + angle_z_degrees
+    else:
+        # At -90 degrees the observable combination is Y + Z.
+        combined = atan2(-float(matrix[0, 1]), float(matrix[0, 0]))
+        angle_z_degrees = previous_z
+        angle_y_degrees = degrees(combined) - angle_z_degrees
+
+    angle_y_degrees += 360.0 * round((previous_y - angle_y_degrees) / 360.0)
+    angle_z_degrees += 360.0 * round((previous_z - angle_z_degrees) / 360.0)
+    return angle_y_degrees, angle_x_degrees, angle_z_degrees
 
 
 def _rotation_y(angle_degrees: float):
@@ -284,6 +332,7 @@ def _limb_controls(
     reference_matrix,
     x_direction,
     previous_frame=None,
+    previous_angles=None,
 ):
     """Retarget one limb with three local Euler axes plus native X bending."""
     bone = _bone_frame(
@@ -299,7 +348,10 @@ def _limb_controls(
         return None
     bone_matrix, upper_direction, lower_direction = bone
     relative = reference_matrix.T @ bone_matrix
-    angle_y, angle_x, angle_z = _matrix_to_yxz(relative)
+    angle_y, angle_x, angle_z = _matrix_to_yxz(
+        relative,
+        previous_angles=previous_angles,
+    )
     bend = degrees(acos(max(-1.0, min(1.0, -float(np.dot(
         upper_direction, lower_direction
     ))))))
@@ -308,7 +360,7 @@ def _limb_controls(
         "ROT_Y": angle_y,
         "ROT_Z": angle_z,
         "BEND_ANGLE_X": max(0.0, min(150.0, bend)),
-    }, bone_matrix
+    }, bone_matrix, (angle_y, angle_x, angle_z)
 
 
 def _head_frame(pose, body_matrix, previous_frame=None):
@@ -351,17 +403,20 @@ def _head_frame(pose, body_matrix, previous_frame=None):
     return np.column_stack((right, up, forward))
 
 
-def _head_controls(pose, body_matrix, previous_frame=None):
+def _head_controls(pose, body_matrix, previous_frame=None, previous_angles=None):
     head_matrix = _head_frame(pose, body_matrix, previous_frame)
     if head_matrix is None:
         return None
     relative = body_matrix.T @ head_matrix
-    angle_y, angle_x, angle_z = _matrix_to_yxz(relative)
+    angle_y, angle_x, angle_z = _matrix_to_yxz(
+        relative,
+        previous_angles=previous_angles,
+    )
     return {
         "ROT_X": angle_x,
         "ROT_Y": angle_y,
         "ROT_Z": angle_z,
-    }, head_matrix
+    }, head_matrix, (angle_y, angle_x, angle_z)
 
 
 def _reference_setup(reference_pose, fallback_pose=None):
@@ -380,7 +435,9 @@ def _reference_setup(reference_pose, fallback_pose=None):
     return None, None
 
 
-def _controls_for_pose(pose, reference_frame, face_flip, previous_frames):
+def _controls_for_pose(
+    pose, reference_frame, face_flip, previous_frames, previous_angles
+):
     current_frame = _torso_frame(pose, face_flip=face_flip)
     controls: dict[str, dict[str, float]] = {}
     reference_frame = reference_frame or WORLD_REFERENCE_FRAME
@@ -406,17 +463,25 @@ def _controls_for_pose(pose, reference_frame, face_flip, previous_frames):
             limb = _limb_controls(
                 pose, *indices, current_matrix, -1.0,
                 previous_frames.get(part),
+                previous_angles.get(part),
             )
             if limb is not None:
-                limb_controls, bone_matrix = limb
+                limb_controls, bone_matrix, angles = limb
                 controls[part] = limb_controls
                 previous_frames[part] = bone_matrix
+                previous_angles[part] = angles
 
-        head = _head_controls(pose, current_matrix, previous_frames.get("head"))
+        head = _head_controls(
+            pose,
+            current_matrix,
+            previous_frames.get("head"),
+            previous_angles.get("head"),
+        )
         if head is not None:
-            head_controls, head_matrix = head
+            head_controls, head_matrix, angles = head
             controls["head"] = head_controls
             previous_frames["head"] = head_matrix
+            previous_angles["head"] = angles
 
         body_yaw, _, _ = _matrix_to_yxz(reference_matrix.T @ current_matrix)
         leg_matrix = reference_matrix @ _rotation_y(body_yaw)
@@ -430,11 +495,13 @@ def _controls_for_pose(pose, reference_frame, face_flip, previous_frames):
         limb = _limb_controls(
             pose, *indices, leg_matrix, 1.0,
             previous_frames.get(part),
+            previous_angles.get(part),
         )
         if limb is not None:
-            limb_controls, bone_matrix = limb
+            limb_controls, bone_matrix, angles = limb
             controls[part] = limb_controls
             previous_frames[part] = bone_matrix
+            previous_angles[part] = angles
 
     return controls
 
@@ -445,7 +512,7 @@ def calculate_pose_controls(
 ) -> dict[str, dict[str, float]]:
     """Convert one MediaPipe pose to full 3D Mine-imator human controls."""
     reference_frame, face_flip = _reference_setup(reference_pose, pose)
-    return _controls_for_pose(pose, reference_frame, face_flip, {})
+    return _controls_for_pose(pose, reference_frame, face_flip, {}, {})
 
 
 def calculate_pose_sequence(
@@ -467,10 +534,11 @@ def calculate_pose_sequence(
 
     reference_frame, face_flip = _reference_setup(reference_pose)
     previous_frames: dict[str, np.ndarray] = {}
+    previous_angles: dict[str, tuple[float, float, float]] = {}
     converted = []
     for timestamp, pose in samples:
         controls = _controls_for_pose(
-            pose, reference_frame, face_flip, previous_frames
+            pose, reference_frame, face_flip, previous_frames, previous_angles
         )
         converted.append((max(0.0, float(timestamp)), controls))
     return converted

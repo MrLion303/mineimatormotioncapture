@@ -703,3 +703,55 @@ def test_pose_sequence_keeps_limb_frame_continuity_through_straight_pose():
         float(np.max(np.abs(right - left)))
         for left, right in zip(rotations, rotations[1:])
     ) < 120.0
+
+
+
+def test_yxz_euler_angles_stay_continuous_through_gimbal_singularity():
+    from math import cos, radians, sin
+
+    def rotation_yxz(y, x, z):
+        y, x, z = (radians(value) for value in (y, x, z))
+        cy, cx, cz = cos(y), cos(x), cos(z)
+        sy, sx, sz = sin(y), sin(x), sin(z)
+        ry = np.asarray(((cy, 0, sy), (0, 1, 0), (-sy, 0, cy)), dtype=float)
+        rx = np.asarray(((1, 0, 0), (0, cx, -sx), (0, sx, cx)), dtype=float)
+        rz = np.asarray(((cz, -sz, 0), (sz, cz, 0), (0, 0, 1)), dtype=float)
+        return ry @ rx @ rz
+
+    previous = None
+    sequence = []
+    for middle_angle in range(80, 101, 2):
+        matrix = rotation_yxz(25.0, float(middle_angle), -10.0)
+        angles = _matrix_to_yxz(matrix, previous)
+        sequence.append(angles)
+        previous = angles
+
+    assert max(
+        max(abs(right[axis] - left[axis]) for axis in range(3))
+        for left, right in zip(sequence, sequence[1:])
+    ) < 15.0
+    assert sequence[-1][1] == pytest.approx(100.0, abs=1e-6)
+
+
+def test_yxz_euler_alternate_branch_does_not_accumulate_hundreds_of_degrees():
+    from math import cos, radians, sin
+
+    def rotation_y(angle):
+        value = radians(angle)
+        return np.asarray(
+            ((cos(value), 0, sin(value)), (0, 1, 0), (-sin(value), 0, cos(value))),
+            dtype=float,
+        )
+
+    previous = None
+    sequence = []
+    for angle in (160, 170, 179, 181, 190, 200, 215, 230):
+        result = _matrix_to_yxz(rotation_y(float(angle)), previous)
+        sequence.append(result)
+        previous = result
+
+    assert max(abs(value) for row in sequence for value in row) < 360.0
+    assert max(
+        abs(right[0] - left[0])
+        for left, right in zip(sequence, sequence[1:])
+    ) < 20.0
