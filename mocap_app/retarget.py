@@ -817,6 +817,7 @@ def calculate_ik_target_sequence(
             pole = anchor + upper_direction * upper_length
             target = pole + lower_direction * lower_length
             targets[part] = {
+                "start": tuple(float(value) for value in anchor),
                 "target": tuple(float(value) for value in target),
                 "pole": tuple(float(value) for value in pole),
             }
