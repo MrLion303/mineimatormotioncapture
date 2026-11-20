@@ -63,14 +63,15 @@ def _unit(vector):
     return tuple(component / magnitude for component in vector)
 
 
-def _torso_frame(pose: dict[str, Any]):
+def _torso_frame(pose: dict[str, Any], face_flip: bool | None = None):
     """Build a stable orthonormal torso frame from shoulder and hip landmarks.
 
     Shoulder width is preferred because it captures torso twist. If that axis
     becomes almost parallel to the torso's up axis, its projected width is
     unreliable; in that case the pelvis width is used as a geometric fallback.
-    The resulting forward axis is checked against the nose-to-ears direction
-    so front-facing footage cannot silently produce a backward torso frame.
+    The resulting forward axis can be anchored to the nose-to-ears direction.
+    For a captured take this handedness is chosen once from the first complete
+    torso frame and then held fixed, so head turns cannot flip the torso frame.
     Degenerate torso height or width is rejected instead of producing a frame
     whose axes can jump dramatically from one video frame to the next.
     """
@@ -122,14 +123,17 @@ def _torso_frame(pose: dict[str, Any]):
     # opposite to the face direction (especially in front-facing footage).
     # Keep the torso frame aligned with the character's front so yaw, arms and
     # head are expressed in the same forward-facing coordinate system.
-    nose = _point(pose, 0)
-    left_ear = _point(pose, 7)
-    right_ear = _point(pose, 8)
-    if nose is not None and left_ear is not None and right_ear is not None:
-        face_direction = _subtract(nose, _midpoint(left_ear, right_ear))
-        if _dot(forward, face_direction) < 0.0:
-            right = tuple(-component for component in right)
-            forward = tuple(-component for component in forward)
+    if face_flip is None:
+        nose = _point(pose, 0)
+        left_ear = _point(pose, 7)
+        right_ear = _point(pose, 8)
+        if nose is not None and left_ear is not None and right_ear is not None:
+            face_direction = _subtract(nose, _midpoint(left_ear, right_ear))
+            face_flip = _dot(forward, face_direction) < 0.0
+
+    if face_flip:
+        right = tuple(-component for component in right)
+        forward = tuple(-component for component in forward)
     return right, up, forward
 
 def _relative_euler(reference_frame, current_frame) -> tuple[float, float, float]:
@@ -216,12 +220,20 @@ def calculate_pose_controls(
     reference frame because their Mine-imator parent is the character root,
     which this application intentionally keeps stationary.
     """
-    current_frame = _torso_frame(pose)
-    reference_frame = (
-        _torso_frame(reference_pose)
-        if reference_pose is not None
-        else WORLD_REFERENCE_FRAME
-    )
+    if reference_pose is not None:
+        unflipped_reference = _torso_frame(reference_pose, face_flip=False)
+        face_aligned_reference = _torso_frame(reference_pose, face_flip=None)
+        face_flip = (
+            unflipped_reference is not None
+            and face_aligned_reference is not None
+            and _dot(unflipped_reference[0], face_aligned_reference[0]) < 0.0
+        )
+        reference_frame = _torso_frame(reference_pose, face_flip=face_flip)
+        current_frame = _torso_frame(pose, face_flip=face_flip)
+    else:
+        reference_frame = WORLD_REFERENCE_FRAME
+        current_frame = _torso_frame(pose)
+
     if reference_frame is None:
         reference_frame = current_frame or WORLD_REFERENCE_FRAME
 
