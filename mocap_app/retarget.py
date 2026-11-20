@@ -762,9 +762,14 @@ def calculate_ik_target_sequence(
         image_end = _image_point(pose, end_index)
         if image_scale is not None and image_start is not None and image_end is not None:
             aspect = _image_aspect(pose)
+            # Image Y increases downward, matching MediaPipe world Y.
+            # Mine-imator's humanoid rig also extends legs toward negative
+            # local Y. The reference torso frame has its up axis toward
+            # negative camera Y, so preserve the positive image delta here;
+            # negating it would flip every captured wrist/ankle vertically.
             return np.asarray((
                 (image_end[0] - image_start[0]) * aspect * image_scale,
-                -(image_end[1] - image_start[1]) * image_scale,
+                (image_end[1] - image_start[1]) * image_scale,
                 (world_end[2] - world_start[2]) * depth_weight,
             ), dtype=float)
 
