@@ -625,6 +625,13 @@ def export_miobject(
                         field: round(float(values[frame][field]), 4)
                         for field in fields
                     }
+                    if part in IK_HELPER_CONFIG:
+                        # Native IK supplies both bone directions and the hinge
+                        # bend. Keeping the approximate Euler/bend channels as
+                        # well would rotate the rig twice before IK is applied.
+                        semantic_values = {
+                            field: 0.0 for field in fields
+                        }
                     keyframe_values.update(
                         _serialize_rotation_axes(semantic_values)
                     )
