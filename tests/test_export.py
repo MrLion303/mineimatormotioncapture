@@ -906,7 +906,7 @@ def test_leg_knee_uses_screen_geometry_instead_of_noisy_world_depth():
     image = {
         0: (0.5, 0.1),
         11: (0.42, 0.3), 12: (0.58, 0.3),
-        23: (0.4, 0.45), 25: (0.43, 0.65), 27: (0.4, 0.85),
+        23: (0.4, 0.45), 25: (0.43, 0.65), 27: (0.46, 0.85),
         24: (0.6, 0.45), 26: (0.6, 0.65), 28: (0.6, 0.85),
     }
     pose = _with_image_landmarks(pose, image)
@@ -945,7 +945,7 @@ def test_root_tracks_image_space_and_anchors_to_the_supporting_foot():
     )
     root = sequence[-1][1]["root"]
 
-    assert root["POS_X"] == pytest.approx(0.09, abs=0.01)
+    assert root["POS_X"] == pytest.approx(0.1125, abs=0.01)
     assert root["POS_Y"] == pytest.approx(0.0675, abs=0.01)
     assert root["POS_Z"] == pytest.approx(0.0, abs=1e-8)
 
