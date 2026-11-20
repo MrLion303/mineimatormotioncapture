@@ -966,8 +966,9 @@ def test_root_tracks_image_space_and_anchors_to_the_supporting_foot():
     )
     root = sequence[-1][1]["root"]
 
-    assert root["POS_X"] == pytest.approx(0.1125, abs=0.01)
-    assert root["POS_Y"] == pytest.approx(0.0675, abs=0.01)
+    # The standard Steve rig is 32 model units tall (two blocks).
+    assert root["POS_X"] == pytest.approx(2.0, abs=0.01)
+    assert root["POS_Y"] == pytest.approx(1.2, abs=0.01)
     assert root["POS_Z"] == pytest.approx(0.0, abs=1e-8)
 
 
