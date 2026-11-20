@@ -689,6 +689,143 @@ def _root_translation(pose, reference_pose):
     }
 
 
+def calculate_ik_target_sequence(
+    samples,
+    reference_pose: dict[str, Any] | None = None,
+):
+    """Map captured wrist/ankle endpoints to Mine-imator's native limb IK.
+
+    The Steve rig has known upper/lower segment lengths. We preserve the
+    captured direction of each segment, but scale it to the corresponding rig
+    length. The returned target and pole points are local to the character
+    root, so Mine-imator can solve both joints instead of approximating a limb
+    using only its upper-bone rotation and a scalar bend angle.
+    """
+    samples = list(samples)
+    if not samples:
+        return []
+    if reference_pose is None:
+        reference_pose = next(
+            (
+                pose for _, pose in samples
+                if _torso_frame(pose) is not None
+            ),
+            samples[0][1],
+        )
+
+    reference_frame, face_flip = _reference_setup(reference_pose)
+    if reference_frame is None:
+        reference_frame = WORLD_REFERENCE_FRAME
+    reference_matrix = _matrix_from_frame(reference_frame)
+
+    reference_image_nose = _image_point(reference_pose, 0)
+    reference_image_left_ankle = _image_point(reference_pose, 27)
+    reference_image_right_ankle = _image_point(reference_pose, 28)
+    reference_world_nose = _point(reference_pose, 0)
+    reference_world_left_ankle = _point(reference_pose, 27)
+    reference_world_right_ankle = _point(reference_pose, 28)
+
+    image_scale = None
+    if all(point is not None for point in (
+        reference_image_nose,
+        reference_image_left_ankle,
+        reference_image_right_ankle,
+        reference_world_nose,
+        reference_world_left_ankle,
+        reference_world_right_ankle,
+    )):
+        image_ground_y = (
+            reference_image_left_ankle[1]
+            + reference_image_right_ankle[1]
+        ) * 0.5
+        image_height = abs(image_ground_y - reference_image_nose[1])
+        world_ground = _midpoint(
+            reference_world_left_ankle,
+            reference_world_right_ankle,
+        )
+        world_height = _length(_subtract(reference_world_nose, world_ground))
+        if image_height > _EPSILON and world_height > _EPSILON:
+            image_scale = world_height / image_height
+
+    def segment_vector(pose, start_index, end_index, depth_weight):
+        world_start = _point(pose, start_index)
+        world_end = _point(pose, end_index)
+        if world_start is None or world_end is None:
+            return None
+
+        image_start = _image_point(pose, start_index)
+        image_end = _image_point(pose, end_index)
+        if image_scale is not None and image_start is not None and image_end is not None:
+            aspect = _image_aspect(pose)
+            return np.asarray((
+                (image_end[0] - image_start[0]) * aspect * image_scale,
+                -(image_end[1] - image_start[1]) * image_scale,
+                (world_end[2] - world_start[2]) * depth_weight,
+            ), dtype=float)
+
+        return np.asarray(_subtract(world_end, world_start), dtype=float)
+
+    def unit_vector(vector):
+        length = float(np.linalg.norm(vector))
+        if length < _EPSILON:
+            return None
+        return vector / length
+
+    converted = []
+    for timestamp, pose in samples:
+        current_frame = _torso_frame(pose, face_flip=face_flip)
+        current_matrix = (
+            _matrix_from_frame(current_frame)
+            if current_frame is not None
+            else reference_matrix
+        )
+        body_rotation = reference_matrix.T @ current_matrix
+        targets: dict[str, dict[str, tuple[float, float, float]]] = {}
+
+        for part, start_index, joint_index, end_index, upper_length, lower_length, anchor_offset, depth_weight in (
+            ("left_arm", 11, 13, 15, 4.0, 6.0, (6.0, 10.0, 0.0), 0.40),
+            ("right_arm", 12, 14, 16, 4.0, 6.0, (-6.0, 10.0, 0.0), 0.40),
+            ("left_leg", 23, 25, 27, 6.0, 6.0, (2.0, 0.0, 0.0), 0.15),
+            ("right_leg", 24, 26, 28, 6.0, 6.0, (-2.0, 0.0, 0.0), 0.15),
+        ):
+            upper_camera = segment_vector(
+                pose, start_index, joint_index, depth_weight
+            )
+            lower_camera = segment_vector(
+                pose, joint_index, end_index, depth_weight
+            )
+            if upper_camera is None or lower_camera is None:
+                continue
+
+            upper_local = reference_matrix.T @ upper_camera
+            lower_local = reference_matrix.T @ lower_camera
+            upper_direction = unit_vector(upper_local)
+            lower_direction = unit_vector(lower_local)
+            if upper_direction is None or lower_direction is None:
+                continue
+
+            if part.endswith("_arm"):
+                anchor = np.asarray((0.0, 12.0, 0.0), dtype=float) + (
+                    body_rotation @ np.asarray(anchor_offset, dtype=float)
+                )
+            else:
+                anchor = np.asarray(
+                    (anchor_offset[0], 12.0, anchor_offset[2]),
+                    dtype=float,
+                )
+
+            pole = anchor + upper_direction * upper_length
+            target = pole + lower_direction * lower_length
+            targets[part] = {
+                "target": tuple(float(value) for value in target),
+                "pole": tuple(float(value) for value in pole),
+            }
+
+        converted.append((max(0.0, float(timestamp)), targets))
+
+    return converted
+
+
 def calculate_pose_controls(
     pose: dict[str, Any],
     reference_pose: dict[str, Any] | None = None,
