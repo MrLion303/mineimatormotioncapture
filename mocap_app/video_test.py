@@ -109,6 +109,7 @@ def run_regression(
             "timestamp": round(float(timestamp), 6),
             "world": pose.get("world", []),
             "image": pose.get("image", []),
+            "image_size": pose.get("image_size"),
             "controls": controls,
         })
         for part, fields in controls.items():
@@ -179,6 +180,9 @@ def run_regression(
             if frame_count > 0 else None
         ),
         "export": export_info,
+        "ik_enabled_parts": export_info.get("ik_enabled_parts", []),
+        "ik_helper_timelines": export_info.get("ik_helper_timelines", 0),
+        "ik_helper_keyframes": export_info.get("ik_helper_keyframes", {}),
     }
     diagnostic_path = output_path.with_suffix(".diagnostico.json")
     diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
