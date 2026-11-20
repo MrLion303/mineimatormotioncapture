@@ -887,3 +887,85 @@ def test_export_writes_root_translation_without_changing_template_origin(tmp_pat
     assert character["keyframes"]["0"]["POS_Y"] == pytest.approx(24.0)
     assert character["keyframes"]["24"]["POS_X"] > 12.08
     assert character["keyframes"]["24"]["POS_Y"] > 24.03
+
+
+
+def _with_image_landmarks(pose, updates, image_size=(1000, 1000)):
+    pose = {
+        "world": [list(point) for point in pose["world"]],
+        "image": [[0.5, 0.5, 0.0, 1.0, 1.0] for _ in range(33)],
+        "image_size": image_size,
+    }
+    for index, (x, y) in updates.items():
+        pose["image"][index] = [x, y, 0.0, 1.0, 1.0]
+    return pose
+
+
+def test_leg_knee_uses_screen_geometry_instead_of_noisy_world_depth():
+    pose = standing_pose()
+    image = {
+        0: (0.5, 0.1),
+        11: (0.42, 0.3), 12: (0.58, 0.3),
+        23: (0.4, 0.45), 25: (0.43, 0.65), 27: (0.4, 0.85),
+        24: (0.6, 0.45), 26: (0.6, 0.65), 28: (0.6, 0.85),
+    }
+    pose = _with_image_landmarks(pose, image)
+
+    # MediaPipe world depth suggests a deep bend, despite the visible 2D leg
+    # remaining almost straight. The output must trust the image plane.
+    pose["world"][25][2] = 0.35
+    pose["world"][27][2] = -0.25
+
+    controls = calculate_pose_controls(pose, reference_pose=pose)
+    left_leg = controls["left_leg"]
+
+    assert left_leg["BEND_ANGLE_X"] < 8.0
+    assert left_leg["ROT_Z"] == pytest.approx(
+        np.degrees(np.arctan2(0.03, 0.20)), abs=0.5
+    )
+    assert abs(left_leg["ROT_X"]) <= 18.0
+
+
+def test_root_tracks_image_space_and_anchors_to_the_supporting_foot():
+    base = standing_pose()
+    reference = _with_image_landmarks(base, {
+        0: (0.5, 0.1),
+        23: (0.4, 0.5), 24: (0.6, 0.5),
+        27: (0.4, 0.9), 28: (0.6, 0.88),
+    })
+    moved = _with_image_landmarks(base, {
+        0: (0.55, 0.07),
+        23: (0.45, 0.47), 24: (0.65, 0.47),
+        27: (0.45, 0.87), 28: (0.65, 0.85),
+    })
+
+    sequence = calculate_pose_sequence(
+        [(0.0, reference), (1.0, moved)],
+        reference_pose=reference,
+    )
+    root = sequence[-1][1]["root"]
+
+    assert root["POS_X"] == pytest.approx(0.09, abs=0.01)
+    assert root["POS_Y"] == pytest.approx(0.0675, abs=0.01)
+    assert root["POS_Z"] == pytest.approx(0.0, abs=1e-8)
+
+
+def test_supporting_foot_prevents_root_lift_when_only_one_ankle_moves():
+    base = standing_pose()
+    reference = _with_image_landmarks(base, {
+        0: (0.5, 0.1),
+        23: (0.4, 0.5), 24: (0.6, 0.5),
+        27: (0.4, 0.9), 28: (0.6, 0.9),
+    })
+    one_foot_up = _with_image_landmarks(base, {
+        0: (0.5, 0.1),
+        23: (0.4, 0.5), 24: (0.6, 0.5),
+        27: (0.4, 0.8), 28: (0.6, 0.9),
+    })
+
+    sequence = calculate_pose_sequence(
+        [(0.0, reference), (1.0, one_foot_up)],
+        reference_pose=reference,
+    )
+
+    assert sequence[-1][1]["root"]["POS_Y"] == pytest.approx(0.0, abs=1e-8)
