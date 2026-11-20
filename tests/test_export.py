@@ -755,3 +755,26 @@ def test_yxz_euler_alternate_branch_does_not_accumulate_hundreds_of_degrees():
         abs(right[0] - left[0])
         for left, right in zip(sequence, sequence[1:])
     ) < 20.0
+
+
+
+def test_export_duration_matches_mineimator_24_fps_project(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+
+    source_duration = 30.1166666667
+    result = export_miobject(
+        template_path,
+        output_path,
+        [(0.0, standing_pose()), (source_duration, standing_pose())],
+        fps=24,
+        duration_seconds=source_duration,
+        optimize_keyframes=False,
+        smooth_motion=False,
+    )
+
+    assert result["fps"] == 24
+    assert result["final_frame"] == 723
+    assert result["final_frame"] / 24 == pytest.approx(30.125)
+    assert abs(result["final_frame"] / 24 - source_duration) < 1 / 24

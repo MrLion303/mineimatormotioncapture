@@ -5,7 +5,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 ## Versión 0.2.12
 
 - Se fija el modelo MediaPipe Pose Landmarker Heavy, sin selector de calidad; se utilizan parámetros de confianza más estrictos.
-- La vista previa y la exportación usan 30 FPS recomendados, sin controles de FPS.
+- La vista previa usa la frecuencia real de la cámara; la exportación permite elegir 24, 30 o 60 FPS para que coincida con el tempo del proyecto de Mine-imator (24 FPS por defecto).
 - El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; el giro horizontal se exporta en el canal nativo `BEND_ANGLE_Z`, conforme al rig de referencia de Mine-imator.
 - Los brazos se expresan en el marco local actual del torso, evitando duplicar el giro del torso en los brazos.
 - La cabeza usa `ROT_X` y `ROT_Z`; el torso usa `BEND_ANGLE_X/Y/Z` con el yaw asignado a `BEND_ANGLE_Z`.
@@ -41,7 +41,7 @@ python main.py
 1. Conecta la webcam.
 2. La aplicación selecciona automáticamente el modelo **Heavy** y configura la vista previa a 30 FPS.
 3. Carga tu plantilla humana .miobject.
-4. Define la duración. La exportación se genera automáticamente a 30 FPS.
+4. Define la duración y selecciona los mismos FPS que tiene tu proyecto de Mine-imator. El valor predeterminado es 24 FPS, igual que el preset de prueba.
 5. Colócate de cuerpo completo dentro del encuadre. Evita que hombros, codos, muñecas, caderas, rodillas y tobillos queden ocultos.
 6. Pulsa **Grabar**. Se mostrará 3, 2, 1 y después comenzará la captura.
 7. Al terminar, la aplicación procesa las muestras pendientes.

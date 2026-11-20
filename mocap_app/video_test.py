@@ -12,7 +12,12 @@ from .retarget import calculate_pose_controls, calculate_pose_sequence
 from .video import VideoWorker
 
 
-def run_regression(video_path: Path, template_path: Path, output_path: Path) -> dict:
+def run_regression(
+    video_path: Path,
+    template_path: Path,
+    output_path: Path,
+    fps: int = 24,
+) -> dict:
     app = QCoreApplication.instance()
     if app is None:
         app = QCoreApplication([])
@@ -62,7 +67,7 @@ def run_regression(video_path: Path, template_path: Path, output_path: Path) -> 
         template_path,
         output_path,
         samples,
-        fps=30,
+        fps=fps,
         duration_seconds=worker_result["duration_seconds"],
         optimize_keyframes=True,
         smooth_motion=True,
@@ -136,6 +141,10 @@ def run_regression(video_path: Path, template_path: Path, output_path: Path) -> 
         "first_frame_controls": pose_frames[0]["controls"],
         "raw_channel_ranges": channel_ranges,
         "torso_yaw_channel": "BEND_ANGLE_Z",
+        "project_fps": int(fps),
+        "mineimator_playback_duration_seconds": (
+            export_info["final_frame"] / float(fps)
+        ),
         "body_channel_ranges": body_ranges,
         "source_frame_count": frame_count,
         "source_fps": source_fps,
@@ -166,9 +175,18 @@ def main() -> None:
     parser.add_argument("--video", required=True, type=Path)
     parser.add_argument("--template", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--fps",
+        type=int,
+        choices=(24, 30, 60),
+        default=24,
+        help="FPS del proyecto de Mine-imator (predeterminado: 24).",
+    )
     args = parser.parse_args()
 
-    result = run_regression(args.video, args.template, args.output)
+    result = run_regression(
+        args.video, args.template, args.output, fps=args.fps
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

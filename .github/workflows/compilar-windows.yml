@@ -50,6 +50,7 @@ jobs:
           --video tests/fixtures/rickroll/Download.mp4
           --template tests/fixtures/Steve_29532/Steve.miobject
           --output artifacts/regression/Rickroll_Dance_animado.miobject
+          --fps 24
 
       - name: Publicar resultado de la prueba de movimiento
         uses: actions/upload-artifact@v4

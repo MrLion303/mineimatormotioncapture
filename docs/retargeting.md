@@ -48,3 +48,8 @@ Durante REC cada frame se guarda en una cola cronológica como JPEG de alta cali
 ## Límites de una sola cámara
 
 Una webcam RGB no mide profundidad absoluta, no observa articulaciones que quedan detrás del cuerpo y no reconstruye los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. Oclusiones, ropa holgada, perspectiva, iluminación y movimiento rápido pueden producir errores antes de que el retargeting reciba los datos. El conversor evita añadir un desplazamiento global o rotación de raíz cuando esos movimientos no forman parte de lo que se quiere exportar.
+
+
+## Frecuencia de la línea de tiempo
+
+Los archivos `.miobject` guardan posiciones de fotograma, pero no establecen el tempo del proyecto que los reproduce. Por eso, los FPS de exportación deben coincidir con `project.tempo` del archivo `.miproject`. El preset de validación de Mine-imator Community Build 1.0.0 usa 24 FPS. Exportar una toma de 30.1167 segundos a 30 FPS genera 904 fotogramas; al reproducirlos en un proyecto de 24 FPS, la línea de tiempo dura 37.667 segundos y el movimiento queda aproximadamente un 20 % más lento. Con exportación a 24 FPS se generan 723 fotogramas y la duración reproducida es aproximadamente 30.125 segundos.

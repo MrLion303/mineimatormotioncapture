@@ -35,7 +35,7 @@ from .camera import (
 from .miobject import MiobjectError, export_miobject, load_template
 from .video import VideoWorker, pose_timestamp_is_valid
 
-EXPORT_FPS = 30
+DEFAULT_EXPORT_FPS = 24
 
 
 class MainWindow(QMainWindow):
@@ -294,10 +294,22 @@ class MainWindow(QMainWindow):
         self.duration_spin.setSuffix(" s")
         numeric_grid.addWidget(duration_label, 0, 0)
         numeric_grid.addWidget(self.duration_spin, 1, 0)
+
+        export_fps_label = self._field_label("FPS DEL PROYECTO")
+        self.export_fps_combo = QComboBox()
+        for fps in (24, 30, 60):
+            self.export_fps_combo.addItem(f"{fps} FPS", fps)
+        self.export_fps_combo.setCurrentIndex(0)
+        numeric_grid.addWidget(export_fps_label, 0, 1)
+        numeric_grid.addWidget(self.export_fps_combo, 1, 1)
         numeric_grid.setColumnStretch(0, 1)
+        numeric_grid.setColumnStretch(1, 1)
         capture_layout.addLayout(numeric_grid)
 
-        fixed_fps_note = QLabel("Parámetros automáticos: captura optimizada y exportación a 30 FPS.")
+        fixed_fps_note = QLabel(
+            "Elige los mismos FPS que tiene tu proyecto de Mine-imator. "
+            "El proyecto de prueba usa 24 FPS."
+        )
         fixed_fps_note.setObjectName("hint")
         fixed_fps_note.setWordWrap(True)
         capture_layout.addWidget(fixed_fps_note)
@@ -1292,7 +1304,7 @@ class MainWindow(QMainWindow):
                 self.template_path,
                 output_path,
                 self.samples,
-                fps=EXPORT_FPS,
+                fps=int(self.export_fps_combo.currentData() or DEFAULT_EXPORT_FPS),
                 duration_seconds=self.recorded_duration,
                 optimize_keyframes=self.optimize_check.isChecked(),
                 smooth_motion=self.smooth_check.isChecked(),
@@ -1307,7 +1319,7 @@ class MainWindow(QMainWindow):
         message = (
             f"Archivo exportado correctamente.\n\n"
             f"Duración: {result['duration']:.2f} s\n"
-            f"FPS: {result['fps']}\n"
+            f"FPS del proyecto: {result['fps']}\n"
             f"Fotograma final: {result['final_frame']}\n"
             f"Keyframes generados: {result['total_keyframes']}\n\n"
             f"{counts}\n\n"
