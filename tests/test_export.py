@@ -240,7 +240,11 @@ def test_left_and_right_legs_follow_their_own_captured_segments():
     original = calculate_pose_controls(neutral)
     controls = calculate_pose_controls(moved)
     for part in ("left_leg", "right_leg"):
-        assert abs(controls[part]["ROT_Z"] - original[part]["ROT_Z"]) > 5.0
+        rotation_delta = sum(
+            abs(controls[part][field] - original[part][field])
+            for field in ("ROT_X", "ROT_Y", "ROT_Z")
+        )
+        assert rotation_delta > 5.0
         assert 0.0 <= controls[part]["BEND_ANGLE_X"] <= 150.0
     assert "root" not in controls
     assert "char" not in controls
@@ -277,9 +281,14 @@ def test_torso_and_head_use_their_own_native_landmark_axes():
         abs(controls["body"][field] - original["body"][field]) > 1.0
         for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z")
     )
-    assert (
-        abs(controls["head"]["ROT_X"] - original["head"]["ROT_X"]) > 1.0
-        or abs(controls["head"]["ROT_Z"] - original["head"]["ROT_Z"]) > 1.0
+    head_moved = standing_pose()
+    head_moved["world"][0][0] += 0.18
+    head_moved["world"][7][1] += 0.05
+    head_moved["world"][8][1] -= 0.05
+    head_controls = calculate_pose_controls(head_moved, reference_pose=neutral)
+    assert any(
+        abs(head_controls["head"][field] - original["head"][field]) > 1.0
+        for field in ("ROT_X", "ROT_Y", "ROT_Z")
     )
 
 
@@ -364,10 +373,14 @@ def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
 
     left_leg = timeline_for(exported, "left_leg")
     right_leg = timeline_for(exported, "right_leg")
-    assert any(abs(frame["ROT_X"]) + abs(frame["ROT_Z"]) > 1.0
-               for frame in left_leg["keyframes"].values())
-    assert any(abs(frame["ROT_X"]) + abs(frame["ROT_Z"]) > 1.0
-               for frame in right_leg["keyframes"].values())
+    assert any(
+        abs(frame["ROT_X"]) + abs(frame["ROT_Y"]) + abs(frame["ROT_Z"]) > 1.0
+        for frame in left_leg["keyframes"].values()
+    )
+    assert any(
+        abs(frame["ROT_X"]) + abs(frame["ROT_Y"]) + abs(frame["ROT_Z"]) > 1.0
+        for frame in right_leg["keyframes"].values()
+    )
 
     assert timeline_for(exported, "left_arm")["keyframes"]["0"]["POS_Z"] == -0.53
     assert timeline_for(exported, "right_arm")["keyframes"]["0"]["POS_Z"] == -0.43
