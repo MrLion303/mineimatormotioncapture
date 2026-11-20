@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import pytest
 
 from mocap_app.miobject import (
@@ -7,13 +8,16 @@ from mocap_app.miobject import (
     _select_keyframes,
     _shape_motion_delta,
     _smooth,
+    _serialize_rotation_axes,
     export_miobject,
 )
 from mocap_app.retarget import (
     WORLD_REFERENCE_FRAME,
     _segment_rotation,
     _torso_frame,
+    _matrix_to_yxz,
     calculate_pose_controls,
+    calculate_pose_sequence,
 )
 
 
@@ -181,14 +185,19 @@ def test_export_preserves_non_neutral_first_frame_pose(tmp_path):
     left_arm = timeline_for(exported, "left_arm")["keyframes"]["0"]
     right_leg = timeline_for(exported, "right_leg")["keyframes"]["0"]
 
-    assert left_arm["ROT_Z"] == pytest.approx(expected["left_arm"]["ROT_Z"], abs=0.01)
+    assert left_arm["ROT_Y"] == pytest.approx(expected["left_arm"]["ROT_Z"], abs=0.01)
+    assert left_arm["ROT_Z"] == pytest.approx(expected["left_arm"]["ROT_Y"], abs=0.01)
     assert left_arm["BEND_ANGLE_X"] == pytest.approx(
         expected["left_arm"]["BEND_ANGLE_X"], abs=0.01
     )
-    expected_leg = _shape_motion_delta(
-        "right_leg", "ROT_Z", expected["right_leg"]["ROT_Z"]
+    expected_leg_y = _shape_motion_delta(
+        "right_leg", "ROT_Y", expected["right_leg"]["ROT_Z"]
     )
-    assert right_leg["ROT_Z"] == pytest.approx(expected_leg, abs=0.01)
+    expected_leg_z = _shape_motion_delta(
+        "right_leg", "ROT_Z", expected["right_leg"]["ROT_Y"]
+    )
+    assert right_leg["ROT_Y"] == pytest.approx(expected_leg_y, abs=0.01)
+    assert right_leg["ROT_Z"] == pytest.approx(expected_leg_z, abs=0.01)
     body = timeline_for(exported, "body")["keyframes"]["0"]
     assert all(abs(body[field]) < 0.001 for field in (
         "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
@@ -204,13 +213,13 @@ def test_direct_retarget_uses_the_native_channels_from_the_mineimator_example():
     assert set(controls["body"]) == {
         "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
     }
-    assert set(controls["head"]) == {"ROT_X", "ROT_Z"}
+    assert set(controls["head"]) == {"ROT_X", "ROT_Y", "ROT_Z"}
 
     for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
         assert set(controls[part]) == {
             "ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"
         }
-        assert abs(controls[part]["ROT_Y"]) < 0.001
+        assert all(np.isfinite(controls[part][field]) for field in ("ROT_X", "ROT_Y", "ROT_Z"))
 
     for part in ("left_leg", "right_leg"):
         assert abs(controls[part]["ROT_X"]) < 0.01
@@ -340,8 +349,12 @@ def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
     head = timeline_for(exported, "head")
     first_head = head["keyframes"]["0"]
     assert abs(first_head["ROT_X"]) < 0.001
+    assert abs(first_head["ROT_Y"]) < 0.001
     assert abs(first_head["ROT_Z"]) < 0.001
-    assert len({frame["ROT_Y"] for frame in head["keyframes"].values()}) == 1
+    assert any(
+        abs(frame["ROT_Y"]) + abs(frame["ROT_Z"]) > 1.0
+        for frame in head["keyframes"].values()
+    )
 
     for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
         first = timeline_for(exported, part)["keyframes"]["0"]
@@ -460,7 +473,7 @@ def test_arms_stay_local_when_the_torso_turns():
     original = calculate_pose_controls(neutral, reference_pose=neutral)
     controls = calculate_pose_controls(rotated, reference_pose=neutral)
     for part in ("left_arm", "right_arm"):
-        for field in ("ROT_X", "ROT_Z", "BEND_ANGLE_X"):
+        for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"):
             assert abs(controls[part][field] - original[part][field]) < 1.5
 
 
@@ -609,3 +622,71 @@ def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
     assert controls["body"]["BEND_ANGLE_X"] == pytest.approx(100.0, abs=0.01)
     assert abs(controls["body"]["BEND_ANGLE_Y"]) < 0.01
     assert abs(controls["body"]["BEND_ANGLE_Z"]) < 0.01
+
+
+
+def test_yxz_matrix_conversion_reconstructs_full_3d_orientation():
+    angles_yxz = (31.0, -22.0, 47.0)
+    radians = np.radians(angles_yxz)
+    cy, cx, cz = np.cos(radians)
+    sy, sx, sz = np.sin(radians)
+    ry = np.asarray(((cy, 0, sy), (0, 1, 0), (-sy, 0, cy)), dtype=float)
+    rx = np.asarray(((1, 0, 0), (0, cx, -sx), (0, sx, cx)), dtype=float)
+    rz = np.asarray(((cz, -sz, 0), (sz, cz, 0), (0, 0, 1)), dtype=float)
+    matrix = ry @ rx @ rz
+
+    converted = _matrix_to_yxz(matrix)
+    assert converted == pytest.approx(angles_yxz, abs=1e-6)
+    rebuilt_y, rebuilt_x, rebuilt_z = np.radians(converted)
+    cy, cx, cz = np.cos((rebuilt_y, rebuilt_x, rebuilt_z))
+    sy, sx, sz = np.sin((rebuilt_y, rebuilt_x, rebuilt_z))
+    rebuilt = np.asarray(((cy, 0, sy), (0, 1, 0), (-sy, 0, cy))) @ np.asarray(
+        ((1, 0, 0), (0, cx, -sx), (0, sx, cx))
+    ) @ np.asarray(((cz, -sz, 0), (sz, cz, 0), (0, 0, 1)))
+    assert rebuilt == pytest.approx(matrix, abs=1e-6)
+
+
+def test_mineimator_rotation_file_fields_swap_y_and_z_only_when_serialized():
+    semantic = {"ROT_X": 12.5, "ROT_Y": -27.0, "ROT_Z": 43.0, "BEND_ANGLE_X": 18.0}
+    raw = _serialize_rotation_axes(semantic)
+
+    assert raw["ROT_X"] == pytest.approx(12.5)
+    assert raw["ROT_Y"] == pytest.approx(43.0)
+    assert raw["ROT_Z"] == pytest.approx(-27.0)
+    assert raw["BEND_ANGLE_X"] == pytest.approx(18.0)
+    assert semantic["ROT_Y"] == pytest.approx(-27.0)
+    assert semantic["ROT_Z"] == pytest.approx(43.0)
+
+
+def test_retarget_uses_three_rotation_axes_for_a_diagonal_limb_pose():
+    pose = standing_pose()
+    pose["world"][13] = [-0.12, -0.93, 0.18, 1.0, 1.0]
+    pose["world"][15] = [0.10, -0.62, -0.16, 1.0, 1.0]
+
+    controls = calculate_pose_controls(pose, reference_pose=standing_pose())
+    arm = controls["left_arm"]
+
+    assert set(arm) == {"ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"}
+    assert abs(arm["ROT_Y"]) > 2.0
+    assert abs(arm["ROT_X"]) > 2.0
+    assert abs(arm["ROT_Z"]) > 2.0
+
+
+def test_pose_sequence_keeps_limb_frame_continuity_through_straight_pose():
+    poses = []
+    for offset in (-0.06, -0.025, 0.0, 0.025, 0.06):
+        pose = standing_pose()
+        pose["world"][13] = [-0.25, -0.85, 0.0, 1.0, 1.0]
+        pose["world"][15] = [-0.25 + offset, -0.45, 0.0, 1.0, 1.0]
+        poses.append((len(poses) / 30.0, pose))
+
+    sequence = calculate_pose_sequence(poses, reference_pose=poses[0][1])
+    rotations = [
+        np.asarray([controls["left_arm"][field] for field in ("ROT_X", "ROT_Y", "ROT_Z")])
+        for _, controls in sequence
+    ]
+    assert len(rotations) == len(poses)
+    assert max(
+        float(np.max(np.abs(right - left)))
+        for left, right in zip(rotations, rotations[1:])
+    ) < 120.0

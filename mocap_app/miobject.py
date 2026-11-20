@@ -5,7 +5,7 @@ from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Iterable
 
-from .retarget import calculate_pose_sequence
+from .retarget import calculate_pose_controls, calculate_pose_sequence
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
