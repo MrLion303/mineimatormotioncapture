@@ -486,8 +486,11 @@ def _controls_for_pose(
             previous_frames["head"] = head_matrix
             previous_angles["head"] = angles
 
-        body_yaw, _, _ = _matrix_to_yxz(reference_matrix.T @ current_matrix)
-        leg_matrix = reference_matrix @ _rotation_y(body_yaw)
+        # Legs are direct children of the character root in Mine-imator,
+        # not children of the torso. Their local basis must therefore remain
+        # the character reference frame; applying torso yaw here double-counts
+        # upper-body rotation and makes the feet drift when the torso turns.
+        leg_matrix = reference_matrix
     else:
         leg_matrix = reference_matrix
 
@@ -503,6 +506,51 @@ def _controls_for_pose(
             controls[part] = limb
 
     return controls
+
+
+def _root_translation(pose, reference_pose):
+    """Measure character-root travel from the pelvis, in Mine-imator units.
+
+    MediaPipe world coordinates are metric-like but their absolute scale varies
+    with the camera. Normalize displacement by the captured full-body height,
+    then map it to a 1.8-unit Minecraft character. This preserves lateral steps
+    and vertical bounce that joint rotations alone cannot represent.
+    """
+    current_left_hip = _point(pose, 23)
+    current_right_hip = _point(pose, 24)
+    reference_left_hip = _point(reference_pose, 23)
+    reference_right_hip = _point(reference_pose, 24)
+    if any(point is None for point in (
+        current_left_hip, current_right_hip,
+        reference_left_hip, reference_right_hip,
+    )):
+        return None
+
+    current_hip = _midpoint(current_left_hip, current_right_hip)
+    reference_hip = _midpoint(reference_left_hip, reference_right_hip)
+
+    nose = _point(reference_pose, 0)
+    left_ankle = _point(reference_pose, 27)
+    right_ankle = _point(reference_pose, 28)
+    if nose is not None and left_ankle is not None and right_ankle is not None:
+        ankle_mid = _midpoint(left_ankle, right_ankle)
+        body_height = _length(_subtract(nose, ankle_mid))
+    else:
+        shoulders = (_point(reference_pose, 11), _point(reference_pose, 12))
+        if any(point is None for point in shoulders):
+            return None
+        shoulder_mid = _midpoint(*shoulders)
+        body_height = _length(_subtract(shoulder_mid, reference_hip)) * 3.2
+
+    if body_height < 0.5:
+        return None
+    scale = 1.8 / body_height
+    delta = _subtract(current_hip, reference_hip)
+    return {
+        "POS_X": delta[0] * scale,
+        "POS_Y": -delta[1] * scale,
+        "POS_Z": delta[2] * scale,
+    }
 
 
 def calculate_pose_controls(
@@ -539,6 +587,9 @@ def calculate_pose_sequence(
         controls = _controls_for_pose(
             pose, reference_frame, face_flip, previous_frames, previous_angles
         )
+        root = _root_translation(pose, reference_pose)
+        if root is not None:
+            controls["root"] = root
         converted.append((max(0.0, float(timestamp)), controls))
     return converted
 
