@@ -640,7 +640,11 @@ def _root_translation(pose, reference_pose):
         if body_height <= _EPSILON:
             return None
 
-        scale = 1.8 / body_height
+        # Mine-imator's standard Steve rig is 32 model units tall
+        # (two 16-unit blocks), not 1.8 units. Using 1.8 here under-scales
+        # root corrections by almost 18x and leaves the feet visibly above
+        # the floor whenever the dancer bounces or changes support foot.
+        scale = 32.0 / body_height
         horizontal_scale = scale * _image_aspect(reference_pose)
         return {
             "POS_X": (current_hip_x - reference_hip_x) * horizontal_scale,
@@ -680,7 +684,8 @@ def _root_translation(pose, reference_pose):
 
     if body_height < 0.5:
         return None
-    scale = 1.8 / body_height
+    # Use the same Mine-imator model-unit convention for legacy samples.
+    scale = 32.0 / body_height
     delta = _subtract(current_hip, reference_hip)
     return {
         "POS_X": delta[0] * scale,
