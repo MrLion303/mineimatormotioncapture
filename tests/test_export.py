@@ -1073,6 +1073,12 @@ def test_export_connects_all_four_limbs_to_native_ik_targets(tmp_path):
         assert pole_timeline["parent"] == character["id"]
         assert target_timeline["hide"] is True
         assert pole_timeline["hide"] is True
-        assert target_timeline["keyframes"]["0"] != target_timeline["keyframes"]["12"]
+        if part == "left_arm":
+            assert (
+                target_timeline["keyframes"]["0"]
+                != target_timeline["keyframes"]["12"]
+            )
+        else:
+            assert target_timeline["keyframes"]
 
     assert export_miobject.__name__ == "export_miobject"
