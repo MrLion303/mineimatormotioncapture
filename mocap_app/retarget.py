@@ -370,6 +370,99 @@ def _limb_controls(
     }
 
 
+def _image_point(pose: dict[str, Any], index: int):
+    """Return a reliable 2D landmark when the frame-space pose is available."""
+    points = pose.get("image") or []
+    if index >= len(points):
+        return None
+    value = points[index]
+    if len(value) < 2:
+        return None
+    visibility = float(value[3]) if len(value) > 3 else 1.0
+    presence = float(value[4]) if len(value) > 4 else visibility
+    if min(visibility, presence) < MIN_VISIBILITY:
+        return None
+    return float(value[0]), float(value[1])
+
+
+def _image_aspect(pose: dict[str, Any]) -> float:
+    size = pose.get("image_size")
+    if isinstance(size, (tuple, list)) and len(size) >= 2:
+        width, height = float(size[0]), float(size[1])
+        if width > 0.0 and height > 0.0:
+            return width / height
+    return 1.0
+
+
+def _bend_angle_2d(start, joint, end) -> float:
+    """Measure projected joint flexion without unreliable monocular depth."""
+    first = (start[0] - joint[0], start[1] - joint[1], 0.0)
+    second = (end[0] - joint[0], end[1] - joint[1], 0.0)
+    length_a = _length(first)
+    length_b = _length(second)
+    if length_a < _EPSILON or length_b < _EPSILON:
+        return 0.0
+    dot = _dot(first, second) / (length_a * length_b)
+    inner_angle = degrees(acos(max(-1.0, min(1.0, dot))))
+    return max(0.0, min(120.0, 180.0 - inner_angle))
+
+
+def _leg_controls(pose, start_index, joint_index, end_index, parent_frame):
+    """Retarget legs from image-plane geometry, with restrained depth influence.
+
+    MediaPipe's world landmarks are pelvis-centred and its estimated depth can
+    make straight legs appear deeply bent. Use the visible 2D knee angle and
+    screen-space thigh direction as the primary measurement. Keep only a small,
+    bounded amount of world-depth tilt for steps toward or away from camera.
+    """
+    image_start = _image_point(pose, start_index)
+    image_joint = _image_point(pose, joint_index)
+    image_end = _image_point(pose, end_index)
+    world_start = _point(pose, start_index)
+    world_joint = _point(pose, joint_index)
+    world_end = _point(pose, end_index)
+
+    if image_start is None or image_joint is None or image_end is None:
+        return _limb_controls(
+            pose, start_index, joint_index, end_index, parent_frame
+        )
+
+    aspect = _image_aspect(pose)
+    start_2d = (image_start[0] * aspect, -image_start[1], 0.0)
+    joint_2d = (image_joint[0] * aspect, -image_joint[1], 0.0)
+    end_2d = (image_end[0] * aspect, -image_end[1], 0.0)
+
+    direction = _subtract(joint_2d, start_2d)
+    local_direction = _unit(direction)
+    if local_direction is None:
+        return None
+
+    # Screen-space movement controls the lateral leg swing. Depth is damped
+    # and clamped so a noisy world-Z estimate cannot pitch the whole leg upward.
+    angle_z = degrees(atan2(local_direction[0], -local_direction[1]))
+    angle_x = 0.0
+    if world_start is not None and world_joint is not None:
+        depth_x, _ = _segment_rotation(
+            world_start, world_joint, parent_frame
+        )
+        angle_x = max(-18.0, min(18.0, depth_x * 0.25))
+
+    bend_2d = _bend_angle_2d(start_2d, joint_2d, end_2d)
+    bend = bend_2d
+    if world_start is not None and world_joint is not None and world_end is not None:
+        # Retain a small amount of depth-derived flex, not enough to turn a
+        # visually straight knee into a crouch.
+        bend_3d = _bend_angle(world_start, world_joint, world_end)
+        bend = bend_2d * 0.9 + bend_3d * 0.1
+
+    return {
+        "ROT_X": angle_x,
+        "ROT_Y": 0.0,
+        "ROT_Z": angle_z,
+        "BEND_ANGLE_X": max(0.0, min(85.0, bend)),
+    }
+
+
 def _head_frame(pose, body_matrix, previous_frame=None):
     nose = _point(pose, 0)
     left_ear = _point(pose, 7)
@@ -501,7 +594,7 @@ def _controls_for_pose(
         ("left_leg", (23, 25, 27)),
         ("right_leg", (24, 26, 28)),
     ):
-        limb = _limb_controls(pose, *indices, leg_parent_frame)
+        limb = _leg_controls(pose, *indices, leg_parent_frame)
         if limb is not None:
             controls[part] = limb
 
@@ -509,13 +602,55 @@ def _controls_for_pose(
 
 
 def _root_translation(pose, reference_pose):
-    """Measure character-root travel from the pelvis, in Mine-imator units.
+    """Track character travel from screen-space hips and the grounded foot.
 
-    MediaPipe world coordinates are metric-like but their absolute scale varies
-    with the camera. Normalize displacement by the captured full-body height,
-    then map it to a 1.8-unit Minecraft character. This preserves lateral steps
-    and vertical bounce that joint rotations alone cannot represent.
+    MediaPipe world landmarks are expressed relative to the pelvis, so their
+    hip midpoint is close to zero in every frame and cannot represent root
+    translation. Use normalized image landmarks for lateral travel and the
+    lowest visible ankle for vertical motion, which keeps a planted foot on the
+    floor while the other leg steps.
     """
+    current_image_hips = (
+        _image_point(pose, 23),
+        _image_point(pose, 24),
+    )
+    reference_image_hips = (
+        _image_point(reference_pose, 23),
+        _image_point(reference_pose, 24),
+    )
+    current_ankles = (
+        _image_point(pose, 27),
+        _image_point(pose, 28),
+    )
+    reference_ankles = (
+        _image_point(reference_pose, 27),
+        _image_point(reference_pose, 28),
+    )
+    reference_nose = _image_point(reference_pose, 0)
+
+    if all(point is not None for point in (
+        *current_image_hips, *reference_image_hips,
+        *current_ankles, *reference_ankles,
+    )) and reference_nose is not None:
+        current_hip_x = (current_image_hips[0][0] + current_image_hips[1][0]) * 0.5
+        reference_hip_x = (reference_image_hips[0][0] + reference_image_hips[1][0]) * 0.5
+        current_ground_y = max(point[1] for point in current_ankles)
+        reference_ground_y = max(point[1] for point in reference_ankles)
+        body_height = reference_ground_y - reference_nose[1]
+        if body_height <= _EPSILON:
+            return None
+
+        scale = 1.8 / body_height
+        horizontal_scale = scale * _image_aspect(reference_pose)
+        return {
+            "POS_X": (current_hip_x - reference_hip_x) * horizontal_scale,
+            "POS_Y": -(current_ground_y - reference_ground_y) * scale,
+            # The normalized pose has no stable absolute depth origin.
+            "POS_Z": 0.0,
+        }
+
+    # Backward-compatible fallback for camera inputs that do not include image
+    # landmarks. This path is not used for the video worker, which records them.
     current_left_hip = _point(pose, 23)
     current_right_hip = _point(pose, 24)
     reference_left_hip = _point(reference_pose, 23)
@@ -528,19 +663,20 @@ def _root_translation(pose, reference_pose):
 
     current_hip = _midpoint(current_left_hip, current_right_hip)
     reference_hip = _midpoint(reference_left_hip, reference_right_hip)
-
     nose = _point(reference_pose, 0)
     left_ankle = _point(reference_pose, 27)
     right_ankle = _point(reference_pose, 28)
     if nose is not None and left_ankle is not None and right_ankle is not None:
-        ankle_mid = _midpoint(left_ankle, right_ankle)
-        body_height = _length(_subtract(nose, ankle_mid))
+        body_height = _length(_subtract(
+            nose, _midpoint(left_ankle, right_ankle)
+        ))
     else:
         shoulders = (_point(reference_pose, 11), _point(reference_pose, 12))
         if any(point is None for point in shoulders):
             return None
-        shoulder_mid = _midpoint(*shoulders)
-        body_height = _length(_subtract(shoulder_mid, reference_hip)) * 3.2
+        body_height = _length(_subtract(
+            _midpoint(*shoulders), reference_hip
+        )) * 3.2
 
     if body_height < 0.5:
         return None
