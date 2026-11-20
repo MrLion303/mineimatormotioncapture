@@ -186,20 +186,33 @@ def test_export_preserves_non_neutral_first_frame_pose(tmp_path):
     exported = json.loads(output_path.read_text(encoding="utf-8"))
     left_arm = timeline_for(exported, "left_arm")["keyframes"]["0"]
     right_leg = timeline_for(exported, "right_leg")["keyframes"]["0"]
+    cameras = {
+        timeline["id"]: timeline
+        for timeline in exported["timelines"]
+        if timeline.get("type") == "camera"
+    }
+    expected_ik = calculate_ik_target_sequence(
+        [(0.0, first_pose), (0.5, first_pose)],
+        reference_pose=first_pose,
+    )[0][1]
 
-    assert left_arm["ROT_Y"] == pytest.approx(expected["left_arm"]["ROT_Z"], abs=0.01)
-    assert left_arm["ROT_Z"] == pytest.approx(expected["left_arm"]["ROT_Y"], abs=0.01)
-    assert left_arm["BEND_ANGLE_X"] == pytest.approx(
-        expected["left_arm"]["BEND_ANGLE_X"], abs=0.01
-    )
-    expected_leg_y = _shape_motion_delta(
-        "right_leg", "ROT_Y", expected["right_leg"]["ROT_Z"]
-    )
-    expected_leg_z = _shape_motion_delta(
-        "right_leg", "ROT_Z", expected["right_leg"]["ROT_Y"]
-    )
-    assert right_leg["ROT_Y"] == pytest.approx(expected_leg_y, abs=0.01)
-    assert right_leg["ROT_Z"] == pytest.approx(expected_leg_z, abs=0.01)
+    # Limb rotation is no longer approximated with Euler angles. Native IK gets
+    # the captured endpoint and elbow/knee pole, with its blend fully enabled.
+    for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"):
+        assert left_arm[field] == pytest.approx(0.0, abs=1e-8)
+        assert right_leg[field] == pytest.approx(0.0, abs=1e-8)
+    assert left_arm["IK_BLEND"] == pytest.approx(1.0)
+    assert right_leg["IK_BLEND"] == pytest.approx(1.0)
+
+    left_target = cameras[IK_HELPER_CONFIG["left_arm"]["target_id"]]["keyframes"]["0"]
+    left_pole = cameras[IK_HELPER_CONFIG["left_arm"]["pole_id"]]["keyframes"]["0"]
+    for axis, field in enumerate(("POS_X", "POS_Y", "POS_Z")):
+        assert left_target[field] == pytest.approx(
+            expected_ik["left_arm"]["target"][axis], abs=0.01
+        )
+        assert left_pole[field] == pytest.approx(
+            expected_ik["left_arm"]["pole"][axis], abs=0.01
+        )
     body = timeline_for(exported, "body")["keyframes"]["0"]
     assert all(abs(body[field]) < 0.001 for field in (
         "BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"
@@ -367,22 +380,28 @@ def test_export_calibrates_starting_stance_and_uses_native_channels(tmp_path):
         for frame in head["keyframes"].values()
     )
 
-    for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
+    cameras = {
+        timeline["id"]: timeline
+        for timeline in exported["timelines"]
+        if timeline.get("type") == "camera"
+    }
+    for part, helper in IK_HELPER_CONFIG.items():
         first = timeline_for(exported, part)["keyframes"]["0"]
-        assert abs(first["ROT_X"]) < 0.001
-        assert abs(first["ROT_Z"]) < 0.001
-        assert abs(first["BEND_ANGLE_X"]) < 1.0
-
-    left_leg = timeline_for(exported, "left_leg")
-    right_leg = timeline_for(exported, "right_leg")
-    assert any(
-        abs(frame["ROT_X"]) + abs(frame["ROT_Y"]) + abs(frame["ROT_Z"]) > 1.0
-        for frame in left_leg["keyframes"].values()
-    )
-    assert any(
-        abs(frame["ROT_X"]) + abs(frame["ROT_Y"]) + abs(frame["ROT_Z"]) > 1.0
-        for frame in right_leg["keyframes"].values()
-    )
+        assert all(
+            abs(first[field]) < 0.001
+            for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X")
+        )
+        assert first["IK_TARGET"] == helper["target_id"]
+        assert first["IK_TARGET_ANGLE"] == helper["pole_id"]
+        assert first["IK_BLEND"] == pytest.approx(1.0)
+        target = cameras[helper["target_id"]]["keyframes"]
+        pole = cameras[helper["pole_id"]]["keyframes"]
+        assert len(target) == 31
+        assert len(pole) == 31
+        assert any(
+            target[frame] != target["0"]
+            for frame in target if frame != "0"
+        )
 
     assert timeline_for(exported, "left_arm")["keyframes"]["0"]["POS_Z"] == -0.53
     assert timeline_for(exported, "right_arm")["keyframes"]["0"]["POS_Z"] == -0.43
