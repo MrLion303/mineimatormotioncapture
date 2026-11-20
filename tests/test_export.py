@@ -821,3 +821,67 @@ def test_forearm_orbit_does_not_create_fictitious_upper_arm_twist():
     for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"):
         values = [frame[field] for frame in rotations]
         assert max(values) - min(values) < 0.1
+
+
+
+def test_root_translation_preserves_lateral_step_vertical_bounce_and_depth():
+    reference = standing_pose()
+    moved = standing_pose()
+    for point in moved["world"]:
+        point[0] += 0.20
+        point[1] -= 0.10
+        point[2] += 0.30
+
+    sequence = calculate_pose_sequence(
+        [(0.0, reference), (1.0, moved)],
+        reference_pose=reference,
+    )
+    root = sequence[-1][1]["root"]
+
+    assert root["POS_X"] > 0.08
+    assert root["POS_Y"] > 0.03
+    assert root["POS_Z"] > 0.12
+
+
+def test_legs_are_retargeted_in_character_root_space_not_torso_yaw():
+    neutral = standing_pose()
+    torso_turn = _rotate_pose_y(neutral, 42.0, (11, 12, 23, 24))
+
+    sequence = calculate_pose_sequence(
+        [(0.0, neutral), (1.0, torso_turn)],
+        reference_pose=neutral,
+    )
+    first = sequence[0][1]
+    turned = sequence[1][1]
+
+    for part in ("left_leg", "right_leg"):
+        for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"):
+            assert turned[part][field] == pytest.approx(first[part][field], abs=1e-5)
+
+
+def test_export_writes_root_translation_without_changing_template_origin(tmp_path):
+    template_path = tmp_path / "template.miobject"
+    output_path = tmp_path / "captured.miobject"
+    make_template(template_path)
+    reference = standing_pose()
+    moved = standing_pose()
+    for point in moved["world"]:
+        point[0] += 0.20
+        point[1] -= 0.10
+
+    export_miobject(
+        template_path,
+        output_path,
+        [(0.0, reference), (1.0, moved)],
+        fps=24,
+        duration_seconds=1.0,
+        optimize_keyframes=False,
+        smooth_motion=False,
+    )
+    exported = json.loads(output_path.read_text(encoding="utf-8"))
+    character = next(item for item in exported["timelines"] if item["type"] == "char")
+
+    assert character["keyframes"]["0"]["POS_X"] == pytest.approx(12.0)
+    assert character["keyframes"]["0"]["POS_Y"] == pytest.approx(24.0)
+    assert character["keyframes"]["24"]["POS_X"] > 12.08
+    assert character["keyframes"]["24"]["POS_Y"] > 24.03
