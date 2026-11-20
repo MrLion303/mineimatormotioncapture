@@ -1,55 +1,48 @@
-# Retargeting de movimiento (0.2.12)
+# Retargeting de movimiento (0.2.13)
 
 ## Principio de conversión
 
-El conversor utiliza los canales nativos del rig humano de Mine-imator y calibra la postura inicial. Los landmarks de MediaPipe están expresados en el sistema de coordenadas de la cámara; no deben escribirse como rotaciones absolutas del personaje. En lugar de calcular tres ángulos independientes desde una sola línea, se construye un marco 3D ortonormal con los centros de hombros y caderas, el eje de hombros y su perpendicular. La rotación que se exporta es la diferencia entre el marco inicial y el marco actual, descompuesta en XYZ. Esto permite medir por separado una reverencia, una inclinación lateral y un giro del torso.
+El conversor usa MediaPipe Pose Heavy para recuperar 33 landmarks por fotograma y los convierte al sistema de coordenadas del rig humano de Mine-imator. Los landmarks 3D de MediaPipe están centrados en la pelvis: describen la postura relativa, pero no proporcionan una traslación global fiable del personaje. Por eso la orientación se obtiene desde el marco del torso y la traslación de escena se estima por separado usando la imagen y el pie que permanece más bajo.
 
-La raíz `char` permanece fija. No se generan traslaciones, giros globales ni desplazamientos de las articulaciones.
+Las extremidades ya no se exportan como una aproximación formada por la rotación del hueso superior más un ángulo de flexión sin signo. Se exportan mediante la cinemática inversa (IK) nativa de Mine-imator: cada brazo y pierna tiene un objeto objetivo para la muñeca o el tobillo y un objeto polo para el codo o la rodilla. Mine-imator resuelve los dos segmentos del miembro con su rig real.
 
-## Correspondencia de landmarks y canales
+## Correspondencia de pistas y landmarks
 
-| Pista de Mine-imator | Landmarks | Canales animados |
+| Pista de Mine-imator | Landmarks | Tratamiento |
 |---|---|---|
-| `body` | Eje entre hombros y caderas, orientación de hombros | `BEND_ANGLE_X`, `BEND_ANGLE_Y`, `BEND_ANGLE_Z` |
-| `head` | Nariz y eje entre orejas | `ROT_X`, `ROT_Z` |
-| `left_arm` | Hombro 11, codo 13, muñeca 15 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
-| `right_arm` | Hombro 12, codo 14, muñeca 16 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
-| `left_leg` | Cadera 23, rodilla 25, tobillo 27 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
-| `right_leg` | Cadera 24, rodilla 26, tobillo 28 | `ROT_X`, `ROT_Y`, `ROT_Z`, `BEND_ANGLE_X` |
+| `body` | Hombros 11/12 y caderas 23/24 | Orientación relativa en `BEND_ANGLE_X/Y/Z` |
+| `head` | Nariz 0 y orejas 7/8 | Giro relativo a torso en `ROT_X/Y/Z` |
+| `left_arm` | Hombro 11, codo 13, muñeca 15 | IK a muñeca + polo de codo |
+| `right_arm` | Hombro 12, codo 14, muñeca 16 | IK a muñeca + polo de codo |
+| `left_leg` | Cadera 23, rodilla 25, tobillo 27 | IK a tobillo + polo de rodilla |
+| `right_leg` | Cadera 24, rodilla 26, tobillo 28 | IK a tobillo + polo de rodilla |
 
-El torso usa los canales nativos `BEND_ANGLE_X/Y/Z` del rig humano de Mine-imator. La correspondencia se adapta al eje local de la pieza: la inclinación hacia delante/atrás se exporta en `BEND_ANGLE_X`, la inclinación lateral en `BEND_ANGLE_Y` y el giro horizontal (yaw) en `BEND_ANGLE_Z`. Esta correspondencia coincide con el archivo de referencia proporcionado, donde el giro correcto del torso está animado en la pista `body` mediante `BEND_ANGLE_Z`. La cabeza y los brazos son hijos de `body`, por lo que heredan ese giro mediante la jerarquía del rig. La cabeza utiliza X y Z relativos al marco del torso. Los brazos se miden en el marco local del torso actual, de modo que el giro del torso no se duplica como giro del brazo. Las piernas se miden respecto al marco de referencia fijo porque son hijas de `char`, no del torso. Brazos y piernas usan la dirección del hueso proximal para orientar el segmento y una flexión de bisagra independiente. La dirección 3D se resuelve con dos ángulos de swing, suficientes para describir el vector del hueso. El tercer eje axial permanece en cero: una cámara monocular no puede medir de forma estable el giro alrededor del propio hueso, y deducirlo de la normal del triángulo hombro-codo-muñeca puede generar vueltas falsas al mover la muñeca. La flexión del codo o la rodilla se calcula aparte como el ángulo entre los segmentos proximal y distal y se exporta en `BEND_ANGLE_X`.
+El torso usa un marco 3D ortonormal construido con hombros y caderas. La diferencia entre el marco inicial y el actual se descompone en flexión frontal, inclinación lateral y giro horizontal. La cabeza y los brazos heredan la orientación del torso; las piernas son hijas directas del personaje y no heredan el giro del torso.
 
-## Calibración de postura inicial
+## Cinemática inversa y dimensiones del rig
 
-El torso toma como referencia su primer marco 3D completo para medir el movimiento de giro e inclinación sin animar la raíz. La cabeza conserva su primera orientación fiable como línea base porque la distancia anatómica entre nariz y orejas no representa una inclinación del cuello. Los brazos y las piernas no se ponen a cero en el primer fotograma: sus ángulos se calculan respecto a los ejes de reposo del rig, por lo que una grabación que empieza con un brazo levantado o una rodilla flexionada conserva esa pose desde el fotograma cero.
+Los objetivos IK se crean como ocho pistas auxiliares de tipo cámara, ocultas y bloqueadas, hijas de la pista principal `char`. No contienen geometría visible. Cuatro pistas representan objetivos de muñeca/tobillo y otras cuatro representan polos de codo/rodilla. Las pistas de los miembros apuntan a esos objetos mediante `IK_TARGET`, `IK_TARGET_ANGLE` y `IK_BLEND=1`.
 
-Para estabilizar la orientación del torso y la cabeza, conviene comenzar REC con el cuerpo erguido y la cabeza mirando al frente durante un instante. No es necesario bajar los brazos ni estirar las piernas si el movimiento ya comenzó: esa postura inicial se conserva en la animación.
+La plantilla Steve de Mine-imator usa estas longitudes del rig: brazos de 4 unidades en el segmento superior y 6 en el inferior; piernas de 6 y 6. La captura determina las direcciones de ambos segmentos y el exportador las adapta a esas longitudes nativas. La posición del polo se calcula desde el codo o la rodilla capturados, por lo que la flexión conserva el lado correcto de la articulación.
 
-## Raíz y posición de escena
+Para evitar doble transformación, los canales manuales de giro/flexión de brazos y piernas se dejan en cero cuando IK está activa. El motor IK es quien resuelve la orientación y el ángulo de la articulación a partir del objetivo y el polo. Los canales del cuerpo y de la cabeza siguen siendo animados directamente.
 
-La pista `char` se congela en el primer transform que encuentre. Si la plantilla tenía keyframes de posición o rotación global, se conservan únicamente los valores del primer fotograma; si no tenía keyframes, se mantienen sus `default_values`. No se exporta movimiento global a `char`.
+## Geometría de piernas y apoyo del suelo
 
-## Conservación de la plantilla
+Para la dirección y flexión visible de las piernas, la imagen 2D es la señal principal. La profundidad estimada de los landmarks 3D solo aporta una contribución pequeña y limitada, porque la profundidad monocular puede hacer que una pierna visualmente recta parezca doblada. La cadera, la rodilla y el tobillo se calculan por separado; no se fuerza una flexión constante ni se aplana la pose cuando una pierna se levanta.
 
-El exportador conserva las propiedades estáticas que no anima, incluidas las posiciones de partes como `POS_Z`, referencias de textura como `TEXTURE_OBJ` y pistas accesorias. La jerarquía existente en el `.miobject` no se reescribe. Los canales nativos que sí se animan se actualizan en las pistas correspondientes.
+La posición de la raíz se calcula con las caderas en coordenadas de imagen para el movimiento horizontal y con el tobillo más bajo para mantener el apoyo. La traslación global se exporta en la pista `char`; los objetivos y polos IK, como hijos de `char`, acompañan esa traslación. La profundidad global absoluta no se infiere de una webcam RGB, así que el desplazamiento de raíz en Z permanece en cero en la ruta 2D.
 
-## Keyframes y suavizado
+## Calibración y tiempo
 
-Las muestras se ordenan por su timestamp y se interpolan a 30 FPS. La optimización retiene el primer y último fotograma, agrega claves al superar aproximadamente 0.8° de cambio y limita el espacio entre claves a 0.15 segundos.
+La primera pose completa del torso define el marco de referencia. La pose inicial de brazos y piernas no se usa como una postura neutral ficticia: las direcciones de los miembros se convierten directamente en objetivos IK, por lo que un brazo que empieza levantado conserva esa posición en el primer fotograma.
 
-La estabilización combina una mediana temporal de tres muestras para rechazar saltos aislados y un filtro adaptativo tipo One Euro. Durante gestos rápidos aumenta el corte del filtro para no aplanar movimientos intencionales. La amplitud de las piernas se conserva sin ganancias reductoras ni zonas muertas; el suavizado temporal controla el ruido sin recortar los pasos capturados. La prueba de regresión comprueba que ninguna extremidad acumule giros mayores de 180° por torsión no observable.
+El vídeo original se analiza a su frecuencia de origen y las muestras se remuestrean a los FPS elegidos para el proyecto. Los objetivos IK usan una separación máxima de clave más corta que los canales angulares para conservar gestos rápidos. La suavización temporal se aplica a los objetivos y polos por separado, sin reemplazar la trayectoria por ángulos promedio.
 
-## Captura de cámara
-
-El modelo Heavy es el único modelo disponible en la interfaz. Se utilizan umbrales de confianza 0.55 para detección/presencia y 0.60 para tracking. La vista previa y la exportación están fijadas a 30 FPS.
-
-Durante REC cada frame se guarda en una cola cronológica como JPEG de alta calidad, junto con su timestamp monotónico. La captura conserva la resolución solicitada de 640×480; únicamente reduce imágenes mayores a ese tamaño. Esto evita que la inferencia durante REC trabaje con una imagen reducida respecto al seguimiento de vista previa. La inferencia procesa los frames pendientes después de detener la toma; la exportación se habilita cuando la cola se vacía.
+La regresión de Rickroll valida el vídeo original completo (1,807 fotogramas, 60 FPS) y exporta el proyecto de referencia a 24 FPS para coincidir con el tempo de la plantilla de Mine-imator Community Build 1.0.0.
 
 ## Límites de una sola cámara
 
-Una webcam RGB no mide profundidad absoluta, no observa articulaciones que quedan detrás del cuerpo y no reconstruye los grados de libertad de muñecas o dedos que no forman parte del esqueleto Pose de 33 landmarks. Oclusiones, ropa holgada, perspectiva, iluminación y movimiento rápido pueden producir errores antes de que el retargeting reciba los datos. El conversor evita añadir un desplazamiento global o rotación de raíz cuando esos movimientos no forman parte de lo que se quiere exportar.
+Una webcam RGB no mide profundidad absoluta ni puede recuperar con certeza una articulación completamente ocluida, la torsión axial de muñecas o detalles de dedos. En esos casos el objetivo IK es una estimación a partir de la proyección 2D y de la profundidad relativa. Las oclusiones, la perspectiva, la ropa holgada y los movimientos muy rápidos pueden introducir errores antes del retargeting.
 
-
-## Frecuencia de la línea de tiempo
-
-Los archivos `.miobject` guardan posiciones de fotograma, pero no establecen el tempo del proyecto que los reproduce. Por eso, los FPS de exportación deben coincidir con `project.tempo` del archivo `.miproject`. El preset de validación de Mine-imator Community Build 1.0.0 usa 24 FPS. Exportar una toma de 30.1167 segundos a 30 FPS genera 904 fotogramas; al reproducirlos en un proyecto de 24 FPS, la línea de tiempo dura 37.667 segundos y el movimiento queda aproximadamente un 20 % más lento. Con exportación a 24 FPS se generan 723 fotogramas y la duración reproducida es aproximadamente 30.125 segundos.
+La nueva salida mejora la correspondencia de manos, pies y bisagras al utilizar los objetivos y polos reales del rig, pero una compilación o una regresión matemática no certifican por sí solas que la animación se vea idéntica. La comprobación visual final requiere abrir el `.miobject` en Mine-imator y revisar el movimiento en el visor.
