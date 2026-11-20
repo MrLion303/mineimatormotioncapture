@@ -9,6 +9,8 @@ from .retarget import calculate_pose_controls, calculate_pose_sequence
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
+ROOT_FIELDS = ("POS_X", "POS_Y", "POS_Z")
+
 PART_FIELDS = {
     "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
     "head": ("ROT_X", "ROT_Y", "ROT_Z"),
@@ -354,6 +356,37 @@ def export_miobject(
                 frame_values[index][field] = value
         part_frame_values[part] = frame_values
 
+    root_sources = {
+        field: [
+            (timestamp, controls["root"][field])
+            for timestamp, controls in converted
+            if "root" in controls and field in controls["root"]
+        ]
+        for field in ROOT_FIELDS
+    }
+    root_frame_values = []
+    for target in frame_times:
+        values = {}
+        for field in ROOT_FIELDS:
+            valid = root_sources[field]
+            values[field] = (
+                _interpolate(
+                    [item[0] for item in valid],
+                    _unwrap_degrees([item[1] for item in valid]),
+                    target,
+                )
+                if valid else 0.0
+            )
+        root_frame_values.append(values)
+    for field in ROOT_FIELDS:
+        filtered = _smooth(
+            [frame[field] for frame in root_frame_values],
+            smooth_motion,
+            fps=int(fps),
+        )
+        for index, value in enumerate(filtered):
+            root_frame_values[index][field] = value
+
     keyframe_counts: dict[str, int] = {}
     for timeline in data["timelines"]:
         if not isinstance(timeline, dict):
@@ -363,9 +396,28 @@ def export_miobject(
             # Freeze the initial transform so the template's group offset is retained.
             _static_first_keyframe(timeline)
         elif timeline_type == "char":
-            # Freeze the template's first character transform. This also removes
-            # any root animation left inside a previously exported .miobject.
-            _static_first_keyframe(timeline)
+            # Keep the template's starting placement, but animate the root
+            # translation measured from the pelvis so lateral steps and bounce
+            # are not discarded. Rotation and other static character fields
+            # remain exactly as supplied by the template.
+            base_values = {}
+            defaults = timeline.get("default_values")
+            if isinstance(defaults, dict):
+                base_values.update(defaults)
+            base_values.update(_first_keyframe_data(timeline))
+            base_values.pop("TRANSITION", None)
+            selected = _select_keyframes(
+                root_frame_values, ROOT_FIELDS, int(fps), optimize_keyframes
+            )
+            timeline["keyframes"] = {}
+            for frame in selected:
+                keyframe_values = dict(base_values)
+                for field in ROOT_FIELDS:
+                    base = float(base_values.get(field, 0.0))
+                    keyframe_values[field] = round(
+                        base + float(root_frame_values[frame][field]), 4
+                    )
+                timeline["keyframes"][str(frame)] = keyframe_values
         elif timeline_type == "bodypart":
             part = timeline.get("model_part_name")
             if part in PART_FIELDS:
