@@ -5,11 +5,40 @@ from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Iterable
 
-from .retarget import calculate_pose_controls, calculate_pose_sequence
+from .retarget import calculate_ik_target_sequence, calculate_pose_controls, calculate_pose_sequence
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 ROOT_FIELDS = ("POS_X", "POS_Y", "POS_Z")
+
+IK_HELPER_CONFIG = {
+    "left_arm": {
+        "target_id": "MOCAPLATARGET001",
+        "pole_id": "MOCAPLAPOLE00001",
+        "target_name": "__MOCAP_LEFT_ARM_TARGET",
+        "pole_name": "__MOCAP_LEFT_ARM_POLE",
+    },
+    "right_arm": {
+        "target_id": "MOCAPRATARGET001",
+        "pole_id": "MOCAPRAPOLE00001",
+        "target_name": "__MOCAP_RIGHT_ARM_TARGET",
+        "pole_name": "__MOCAP_RIGHT_ARM_POLE",
+    },
+    "left_leg": {
+        "target_id": "MOCAPLLTARGET001",
+        "pole_id": "MOCAPLLPOLE00001",
+        "target_name": "__MOCAP_LEFT_LEG_TARGET",
+        "pole_name": "__MOCAP_LEFT_LEG_POLE",
+    },
+    "right_leg": {
+        "target_id": "MOCAPRLTARGET001",
+        "pole_id": "MOCAPR LPOLE00001".replace(" ", ""),
+        "target_name": "__MOCAP_RIGHT_LEG_TARGET",
+        "pole_name": "__MOCAP_RIGHT_LEG_POLE",
+    },
+}
+IK_FIELDS = ("IK_TARGET", "IK_TARGET_ANGLE", "IK_BLEND", "IK_ANGLE_OFFSET")
+IK_POSITION_FIELDS = ("POS_X", "POS_Y", "POS_Z")
 
 PART_FIELDS = {
     "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
@@ -123,6 +152,8 @@ def _template_static_part_fields(data: dict[str, Any]) -> dict[str, dict[str, An
         if not isinstance(part, str):
             continue
         dynamic_fields = set(PART_FIELDS.get(part, ()))
+        if part in IK_HELPER_CONFIG:
+            dynamic_fields.update(IK_FIELDS)
         values: dict[str, Any] = {}
         defaults = timeline.get("default_values")
         if isinstance(defaults, dict):
@@ -237,6 +268,90 @@ def _select_keyframes(
     return selected
 
 
+def _select_ik_keyframes(
+    frame_values: list[dict[str, float]],
+    fps: int,
+    optimize: bool,
+) -> list[int]:
+    """Keep quick endpoint gestures while bounding helper-timeline key density."""
+    if len(frame_values) <= 2:
+        return list(range(len(frame_values)))
+    if not optimize:
+        return list(range(len(frame_values)))
+
+    max_gap = max(2, round(fps * 0.08))
+    threshold = 0.10
+    selected = [0]
+    previous = 0
+    for index in range(1, len(frame_values) - 1):
+        difference = max(
+            abs(frame_values[index][field] - frame_values[previous][field])
+            for field in IK_POSITION_FIELDS
+        )
+        if difference >= threshold or index - previous >= max_gap:
+            selected.append(index)
+            previous = index
+    if selected[-1] != len(frame_values) - 1:
+        selected.append(len(frame_values) - 1)
+    return selected
+
+
+def _helper_timeline(
+    helper_id: str,
+    name: str,
+    parent_id: str,
+    parent_tree_index: int,
+    frame_values: list[dict[str, float]],
+    selected: list[int],
+) -> dict[str, Any]:
+    first = frame_values[0]
+    keyframes = {}
+    for frame in selected:
+        values = {
+            field: round(float(frame_values[frame][field]), 4)
+            for field in IK_POSITION_FIELDS
+        }
+        keyframes[str(frame)] = values
+
+    return {
+        "id": helper_id,
+        "type": "camera",
+        "name": name,
+        "temp": None,
+        "color_tag": "null",
+        "hide": True,
+        "lock": True,
+        "ghost": False,
+        "depth": 0,
+        "default_values": {
+            field: round(float(first[field]), 4)
+            for field in IK_POSITION_FIELDS
+        },
+        "keyframes": keyframes,
+        "parent": parent_id,
+        "parent_tree_index": parent_tree_index,
+        "inherit": {
+            "position": True,
+            "rotation": True,
+            "scale": True,
+            "alpha": True,
+            "color": True,
+            "texture": True,
+            "surface": True,
+            "subsurface": True,
+            "visibility": True,
+            "bend": False,
+            "rot_point": True,
+            "glow_color": True,
+            "select": False,
+            "pose": False,
+        },
+        "scale_resize": False,
+        "rot_point_custom": False,
+        "rot_point": [0, 0, 0],
+    }
+
+
 def export_miobject(
     template_path: str | Path,
     output_path: str | Path,
@@ -308,6 +423,25 @@ def export_miobject(
         shaped.append((timestamp, shaped_controls))
     converted = shaped
     source_times = [item[0] for item in converted]
+
+    # Native Mine-imator IK needs an animated end-effector and pole for each
+    # limb. Their positions are calculated from captured wrists/ankles rather
+    # than inferred from the upper bone's rotation and one unsigned bend angle.
+    ik_converted = calculate_ik_target_sequence(
+        samples, reference_pose=reference_pose
+    )
+    ik_deduplicated = {
+        float(timestamp): targets
+        for timestamp, targets in ik_converted
+        if targets
+    }
+    ik_converted = sorted(ik_deduplicated.items(), key=lambda item: item[0])
+    if not ik_converted:
+        raise MiobjectError(
+            "No se pudieron calcular objetivos IK para brazos y piernas. "
+            "Comprueba que muñecas, codos, caderas, rodillas y tobillos sean visibles."
+        )
+    ik_source_times = [item[0] for item in ik_converted]
 
     if duration_seconds is None:
         duration = source_times[-1]
@@ -387,6 +521,58 @@ def export_miobject(
         for index, value in enumerate(filtered):
             root_frame_values[index][field] = value
 
+    # Resample each IK target and pole at project FPS. Smooth the position
+    # channels independently so endpoint paths stay continuous without using
+    # the slower angle threshold reserved for body-part rotations.
+    ik_frame_values: dict[str, list[dict[str, float]]] = {
+        helper_key: []
+        for part in IK_HELPER_CONFIG
+        for helper_key in (f"{part}:target", f"{part}:pole")
+    }
+    for target_time in frame_times:
+        frame_targets: dict[str, dict[str, float]] = {}
+        for part in IK_HELPER_CONFIG:
+            for helper_key, target_name in (
+                (f"{part}:target", "target"),
+                (f"{part}:pole", "pole"),
+            ):
+                fields = {}
+                for axis, field in enumerate(IK_POSITION_FIELDS):
+                    source_values = [
+                        (timestamp, targets[part][target_name][axis])
+                        for timestamp, targets in ik_converted
+                        if part in targets
+                    ]
+                    if not source_values:
+                        raise MiobjectError(
+                            f"No hay muestras IK suficientes para {part}."
+                        )
+                    fields[field] = _interpolate(
+                        [item[0] for item in source_values],
+                        [float(item[1]) for item in source_values],
+                        target_time,
+                    )
+                frame_targets[helper_key] = fields
+        for helper_key, values in frame_targets.items():
+            ik_frame_values[helper_key].append(values)
+
+    for helper_key, values in ik_frame_values.items():
+        for field in IK_POSITION_FIELDS:
+            filtered = _smooth(
+                [frame[field] for frame in values],
+                smooth_motion,
+                fps=int(fps),
+            )
+            for index, value in enumerate(filtered):
+                values[index][field] = value
+
+    ik_selected = {
+        helper_key: _select_ik_keyframes(
+            values, int(fps), optimize_keyframes
+        )
+        for helper_key, values in ik_frame_values.items()
+    }
+
     keyframe_counts: dict[str, int] = {}
     for timeline in data["timelines"]:
         if not isinstance(timeline, dict):
@@ -442,11 +628,90 @@ def export_miobject(
                     keyframe_values.update(
                         _serialize_rotation_axes(semantic_values)
                     )
+                    if part in IK_HELPER_CONFIG:
+                        helper_ids = IK_HELPER_CONFIG[part]
+                        keyframe_values.update({
+                            "IK_TARGET": helper_ids["target_id"],
+                            "IK_TARGET_ANGLE": helper_ids["pole_id"],
+                            "IK_BLEND": 1.0,
+                            "IK_ANGLE_OFFSET": 0.0,
+                        })
                     timeline["keyframes"][str(frame)] = keyframe_values
                 keyframe_counts[part] = len(selected)
             else:
                 # Keep accessories and other parts at their initial transform.
                 _static_first_keyframe(timeline)
+
+    # Append hidden camera timelines used as IK endpoint/pole objects.
+    # They are children of the character root, so their transforms follow the
+    # character's scene placement and root translation without becoming render
+    # geometry or changing the visible model hierarchy.
+    character_timeline = next(
+        (
+            timeline for timeline in data["timelines"]
+            if isinstance(timeline, dict) and timeline.get("type") == "char"
+        ),
+        None,
+    )
+    if character_timeline is None:
+        raise MiobjectError("La plantilla no contiene la pista principal del personaje.")
+    character_id = character_timeline.get("id")
+    if not isinstance(character_id, str) or not character_id:
+        raise MiobjectError("La pista principal del personaje no tiene un ID válido.")
+
+    used_ids = {
+        timeline.get("id")
+        for timeline in data["timelines"]
+        if isinstance(timeline, dict)
+    }
+    used_ids.update(
+        helper[identifier]
+        for helper in IK_HELPER_CONFIG.values()
+        for identifier in ("target_id", "pole_id")
+    )
+    data["timelines"] = [
+        timeline for timeline in data["timelines"]
+        if not (
+            isinstance(timeline, dict)
+            and timeline.get("id") in {
+                helper[identifier]
+                for helper in IK_HELPER_CONFIG.values()
+                for identifier in ("target_id", "pole_id")
+            }
+        )
+    ]
+
+    direct_children = [
+        timeline.get("parent_tree_index", -1)
+        for timeline in data["timelines"]
+        if isinstance(timeline, dict)
+        and timeline.get("parent") == character_id
+    ]
+    next_tree_index = max(direct_children, default=-1) + 1
+    for part, helper in IK_HELPER_CONFIG.items():
+        for helper_key, identifier, name in (
+            (
+                f"{part}:target",
+                "target_id",
+                helper["target_name"],
+            ),
+            (
+                f"{part}:pole",
+                "pole_id",
+                helper["pole_name"],
+            ),
+        ):
+            data["timelines"].append(
+                _helper_timeline(
+                    helper["target_id"] if identifier == "target_id" else helper["pole_id"],
+                    name,
+                    character_id,
+                    next_tree_index,
+                    ik_frame_values[helper_key],
+                    ik_selected[helper_key],
+                )
+            )
+            next_tree_index += 1
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -468,4 +733,10 @@ def export_miobject(
         "final_frame": final_frame,
         "keyframe_counts": keyframe_counts,
         "total_keyframes": sum(keyframe_counts.values()),
+        "ik_enabled_parts": sorted(IK_HELPER_CONFIG),
+        "ik_helper_timelines": 2 * len(IK_HELPER_CONFIG),
+        "ik_helper_keyframes": {
+            helper_key: len(selected)
+            for helper_key, selected in ik_selected.items()
+        },
     }
