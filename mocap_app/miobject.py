@@ -406,8 +406,16 @@ def export_miobject(
                 base_values.update(defaults)
             base_values.update(_first_keyframe_data(timeline))
             base_values.pop("TRANSITION", None)
-            selected = _select_keyframes(
-                root_frame_values, ROOT_FIELDS, int(fps), optimize_keyframes
+            has_root_motion = any(
+                abs(float(values[field])) > 1e-4
+                for values in root_frame_values
+                for field in ROOT_FIELDS
+            )
+            selected = (
+                _select_keyframes(
+                    root_frame_values, ROOT_FIELDS, int(fps), optimize_keyframes
+                )
+                if has_root_motion else [0]
             )
             timeline["keyframes"] = {}
             for frame in selected:
