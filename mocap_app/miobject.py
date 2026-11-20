@@ -5,13 +5,13 @@ from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Iterable
 
-from .retarget import calculate_pose_controls
+from .retarget import calculate_pose_sequence
 
 
 REQUIRED_PARTS = {"body", "head", "left_arm", "right_arm", "left_leg", "right_leg"}
 PART_FIELDS = {
     "body": ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z"),
-    "head": ("ROT_X", "ROT_Z"),
+    "head": ("ROT_X", "ROT_Y", "ROT_Z"),
     "left_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "right_arm": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
     "left_leg": ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"),
@@ -23,14 +23,27 @@ MAX_KEYFRAME_INTERVAL_SECONDS = 0.15
 
 LEG_MOTION_GAINS = {
     "ROT_X": 0.72,
+    "ROT_Y": 0.72,
     "ROT_Z": 0.72,
     "BEND_ANGLE_X": 0.68,
 }
 LEG_MOTION_DEADZONES = {
     "ROT_X": 1.0,
+    "ROT_Y": 1.0,
     "ROT_Z": 1.0,
     "BEND_ANGLE_X": 1.5,
 }
+
+
+def _serialize_rotation_axes(fields: dict[str, float]) -> dict[str, float]:
+    """Swap raw ROT_Y/ROT_Z in .miobject JSON to match Mine-imator's saved format."""
+    result = dict(fields)
+    if "ROT_Y" in result or "ROT_Z" in result:
+        semantic_y = float(result.get("ROT_Y", 0.0))
+        semantic_z = float(result.get("ROT_Z", 0.0))
+        result["ROT_Y"] = semantic_z
+        result["ROT_Z"] = semantic_y
+    return result
 
 
 def _shape_motion_delta(part: str, field: str, value: float) -> float:
@@ -249,12 +262,8 @@ def export_miobject(
         samples[0][1],
     )
     static_part_fields = _template_static_part_fields(data)
-    converted: list[tuple[float, dict[str, dict[str, float]]]] = []
-    for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose, reference_pose=reference_pose)
-        if controls:
-            converted.append((max(0.0, float(timestamp)), controls))
-    if not converted:
+    converted = calculate_pose_sequence(samples, reference_pose=reference_pose)
+    if not converted or not any(controls for _, controls in converted):
         raise MiobjectError(
             "No hay poses válidas para exportar. Comprueba que se vean los hombros y las caderas."
         )
@@ -262,7 +271,8 @@ def export_miobject(
     converted.sort(key=lambda item: item[0])
     deduplicated: dict[float, dict[str, dict[str, float]]] = {}
     for timestamp, controls in converted:
-        deduplicated[timestamp] = controls
+        if controls:
+            deduplicated[timestamp] = controls
     converted = sorted(deduplicated.items(), key=lambda item: item[0])
 
     # Torso orientation is already measured relative to the first complete
@@ -364,10 +374,13 @@ def export_miobject(
                 timeline["keyframes"] = {}
                 for frame in selected:
                     keyframe_values = dict(static_part_fields.get(part, {}))
-                    keyframe_values.update({
+                    semantic_values = {
                         field: round(float(values[frame][field]), 4)
                         for field in fields
-                    })
+                    }
+                    keyframe_values.update(
+                        _serialize_rotation_axes(semantic_values)
+                    )
                     timeline["keyframes"][str(frame)] = keyframe_values
                 keyframe_counts[part] = len(selected)
             else:

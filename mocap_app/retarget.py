@@ -3,6 +3,8 @@ from __future__ import annotations
 from math import acos, asin, atan2, degrees, sqrt
 from typing import Any
 
+import numpy as np
+
 
 MIN_VISIBILITY = 0.35
 _EPSILON = 1e-6
@@ -190,56 +192,206 @@ def _bend_angle(start, joint, end) -> float:
     return max(0.0, min(150.0, 180.0 - inner_angle))
 
 
-def _limb_controls(pose, start_index, joint_index, end_index, frame):
+def _matrix_from_frame(frame):
+    """Return a local-to-world matrix whose columns are right/up/forward."""
+    return np.column_stack(tuple(np.asarray(axis, dtype=float) for axis in frame))
+
+
+def _matrix_to_yxz(matrix) -> tuple[float, float, float]:
+    """Extract intrinsic Y-X-Z Euler angles, matching the Mine-imator HPE reference."""
+    sin_x = max(-1.0, min(1.0, -float(matrix[1, 2])))
+    angle_x = asin(sin_x)
+    cos_x = sqrt(max(0.0, 1.0 - sin_x * sin_x))
+    if cos_x > 1e-7:
+        angle_y = atan2(float(matrix[0, 2]), float(matrix[2, 2]))
+        angle_z = atan2(float(matrix[1, 0]), float(matrix[1, 1]))
+    else:
+        angle_y = atan2(-float(matrix[2, 0]), float(matrix[0, 0]))
+        angle_z = 0.0
+    return degrees(angle_y), degrees(angle_x), degrees(angle_z)
+
+
+def _rotation_y(angle_degrees: float):
+    angle = np.radians(float(angle_degrees))
+    cosine = float(np.cos(angle))
+    sine = float(np.sin(angle))
+    return np.asarray(
+        ((cosine, 0.0, sine), (0.0, 1.0, 0.0), (-sine, 0.0, cosine)),
+        dtype=float,
+    )
+
+
+def _project_axis(axis, direction):
+    vector = np.asarray(axis, dtype=float)
+    unit_direction = np.asarray(direction, dtype=float)
+    return vector - float(np.dot(vector, unit_direction)) * unit_direction
+
+
+def _bone_frame(
+    pose,
+    start_index: int,
+    joint_index: int,
+    end_index: int,
+    x_direction: float,
+    fallback_right,
+    previous_frame=None,
+):
+    """Build a full 3D bone frame and keep its bend-plane sign continuous."""
     start = _point(pose, start_index)
     joint = _point(pose, joint_index)
     end = _point(pose, end_index)
-    if start is None or joint is None or end is None or frame is None:
+    if start is None or joint is None or end is None:
         return None
-    rot_x, rot_z = _segment_rotation(start, joint, frame)
-    return {
-        "ROT_X": rot_x,
-        "ROT_Y": 0.0,
-        "ROT_Z": rot_z,
-        "BEND_ANGLE_X": _bend_angle(start, joint, end),
-    }
 
+    upper = np.asarray(_subtract(start, joint), dtype=float)
+    lower = np.asarray(_subtract(end, joint), dtype=float)
+    upper_length = float(np.linalg.norm(upper))
+    lower_length = float(np.linalg.norm(lower))
+    if upper_length < _EPSILON or lower_length < _EPSILON:
+        return None
+    local_y = upper / upper_length
 
-def calculate_pose_controls(
-    pose: dict[str, Any],
-    reference_pose: dict[str, Any] | None = None,
-) -> dict[str, dict[str, float]]:
-    """Convert MediaPipe landmarks to native Mine-imator human channels.
-
-    Torso orientation is calculated as a complete 3D frame and compared with
-    the first reliable frame. Camera-space yaw maps to Mine-imator's native
-    BEND_ANGLE_Z channel, matching the supplied working torso-turn rig.
-    Forward/back tilt maps to BEND_ANGLE_X and lateral roll maps to
-    BEND_ANGLE_Y. Arms are expressed in the *current* torso frame, so a torso
-    turn does not get added a second time to the arms. Legs use the fixed
-    reference frame because their Mine-imator parent is the character root,
-    which this application intentionally keeps stationary.
-    """
-    if reference_pose is not None:
-        unflipped_reference = _torso_frame(reference_pose, face_flip=False)
-        face_aligned_reference = _torso_frame(reference_pose, face_flip=None)
-        face_flip = (
-            unflipped_reference is not None
-            and face_aligned_reference is not None
-            and _dot(unflipped_reference[0], face_aligned_reference[0]) < 0.0
-        )
-        reference_frame = _torso_frame(reference_pose, face_flip=face_flip)
-        current_frame = _torso_frame(pose, face_flip=face_flip)
+    bend_plane = np.cross(float(x_direction) * lower, local_y)
+    plane_size = float(np.linalg.norm(bend_plane))
+    if plane_size < 0.035:
+        preferred = previous_frame[:, 0] if previous_frame is not None else fallback_right
+        local_x = _project_axis(preferred, local_y)
+        x_length = float(np.linalg.norm(local_x))
+        if x_length < _EPSILON:
+            return None
+        local_x /= x_length
     else:
-        reference_frame = WORLD_REFERENCE_FRAME
-        current_frame = _torso_frame(pose)
+        local_x = bend_plane / plane_size
 
-    if reference_frame is None:
-        reference_frame = current_frame or WORLD_REFERENCE_FRAME
+    if previous_frame is not None and float(np.dot(local_x, previous_frame[:, 0])) < 0.0:
+        local_x = -local_x
 
+    local_z = np.cross(local_x, local_y)
+    z_length = float(np.linalg.norm(local_z))
+    if z_length < _EPSILON:
+        return None
+    local_z /= z_length
+    local_x = np.cross(local_y, local_z)
+    local_x /= max(float(np.linalg.norm(local_x)), _EPSILON)
+    return np.column_stack((local_x, local_y, local_z)), local_y, lower / lower_length
+
+
+def _limb_controls(
+    pose,
+    start_index,
+    joint_index,
+    end_index,
+    reference_matrix,
+    x_direction,
+    previous_frame=None,
+):
+    """Retarget one limb with three local Euler axes plus native X bending."""
+    bone = _bone_frame(
+        pose,
+        start_index,
+        joint_index,
+        end_index,
+        x_direction,
+        reference_matrix[:, 0],
+        previous_frame,
+    )
+    if bone is None:
+        return None
+    bone_matrix, upper_direction, lower_direction = bone
+    relative = reference_matrix.T @ bone_matrix
+    angle_y, angle_x, angle_z = _matrix_to_yxz(relative)
+    bend = degrees(acos(max(-1.0, min(1.0, -float(np.dot(
+        upper_direction, lower_direction
+    ))))))
+    return {
+        "ROT_X": angle_x,
+        "ROT_Y": angle_y,
+        "ROT_Z": angle_z,
+        "BEND_ANGLE_X": max(0.0, min(150.0, bend)),
+    }, bone_matrix
+
+
+def _head_frame(pose, body_matrix, previous_frame=None):
+    nose = _point(pose, 0)
+    left_ear = _point(pose, 7)
+    right_ear = _point(pose, 8)
+    if nose is None or left_ear is None or right_ear is None:
+        return None
+
+    face_forward = np.asarray(_subtract(
+        nose, _midpoint(left_ear, right_ear)
+    ), dtype=float)
+    forward_length = float(np.linalg.norm(face_forward))
+    if forward_length < _EPSILON:
+        return None
+    forward = face_forward / forward_length
+
+    right_hint = np.asarray(_subtract(right_ear, left_ear), dtype=float)
+    right_hint = _project_axis(right_hint, forward)
+    right_length = float(np.linalg.norm(right_hint))
+    if right_length < _EPSILON:
+        return None
+    right = right_hint / right_length
+
+    sign_reference = (
+        previous_frame[:, 0]
+        if previous_frame is not None
+        else body_matrix[:, 0]
+    )
+    if float(np.dot(right, sign_reference)) < 0.0:
+        right = -right
+
+    up = np.cross(forward, right)
+    up_length = float(np.linalg.norm(up))
+    if up_length < _EPSILON:
+        return None
+    up /= up_length
+    right = np.cross(up, forward)
+    right /= max(float(np.linalg.norm(right)), _EPSILON)
+    return np.column_stack((right, up, forward))
+
+
+def _head_controls(pose, body_matrix, previous_frame=None):
+    head_matrix = _head_frame(pose, body_matrix, previous_frame)
+    if head_matrix is None:
+        return None
+    relative = body_matrix.T @ head_matrix
+    angle_y, angle_x, angle_z = _matrix_to_yxz(relative)
+    return {
+        "ROT_X": angle_x,
+        "ROT_Y": angle_y,
+        "ROT_Z": angle_z,
+    }, head_matrix
+
+
+def _reference_setup(reference_pose, fallback_pose=None):
+    if reference_pose is not None:
+        unflipped = _torso_frame(reference_pose, face_flip=False)
+        aligned = _torso_frame(reference_pose, face_flip=None)
+        face_flip = (
+            unflipped is not None
+            and aligned is not None
+            and _dot(unflipped[0], aligned[0]) < 0.0
+        )
+        return _torso_frame(reference_pose, face_flip=face_flip), face_flip
+
+    if fallback_pose is not None:
+        return _torso_frame(fallback_pose, face_flip=None), None
+    return None, None
+
+
+def _controls_for_pose(pose, reference_frame, face_flip, previous_frames):
+    current_frame = _torso_frame(pose, face_flip=face_flip)
     controls: dict[str, dict[str, float]] = {}
+    reference_frame = reference_frame or WORLD_REFERENCE_FRAME
+    reference_matrix = _matrix_from_frame(reference_frame)
 
-    if current_frame is not None:
+    current_matrix = (
+        _matrix_from_frame(current_frame)
+        if current_frame is not None
+        else None
+    )
+    if current_matrix is not None:
         tilt_x, yaw_y, roll_z = _relative_euler(reference_frame, current_frame)
         controls["body"] = {
             "BEND_ANGLE_X": tilt_x,
@@ -247,32 +399,80 @@ def calculate_pose_controls(
             "BEND_ANGLE_Z": yaw_y,
         }
 
-        left_arm = _limb_controls(pose, 11, 13, 15, current_frame)
-        right_arm = _limb_controls(pose, 12, 14, 16, current_frame)
-        if left_arm is not None:
-            controls["left_arm"] = left_arm
-        if right_arm is not None:
-            controls["right_arm"] = right_arm
+        for part, indices in (
+            ("left_arm", (11, 13, 15)),
+            ("right_arm", (12, 14, 16)),
+        ):
+            limb = _limb_controls(
+                pose, *indices, current_matrix, -1.0,
+                previous_frames.get(part),
+            )
+            if limb is not None:
+                limb_controls, bone_matrix = limb
+                controls[part] = limb_controls
+                previous_frames[part] = bone_matrix
 
-        nose = _point(pose, 0)
-        left_ear = _point(pose, 7)
-        right_ear = _point(pose, 8)
-        if nose is not None and left_ear is not None and right_ear is not None:
-            ear_mid = _midpoint(left_ear, right_ear)
-            ear_axis = _subtract(right_ear, left_ear)
-            face_direction = _subtract(nose, ear_mid)
-            face_local = _local_coordinates(face_direction, current_frame)
-            ear_local = _local_coordinates(ear_axis, current_frame)
-            controls["head"] = {
-                "ROT_X": degrees(atan2(face_local[1], max(abs(face_local[2]), 1e-5))),
-                "ROT_Z": degrees(atan2(ear_local[1], max(abs(ear_local[0]), 1e-5))),
-            }
+        head = _head_controls(pose, current_matrix, previous_frames.get("head"))
+        if head is not None:
+            head_controls, head_matrix = head
+            controls["head"] = head_controls
+            previous_frames["head"] = head_matrix
 
-    left_leg = _limb_controls(pose, 23, 25, 27, reference_frame)
-    right_leg = _limb_controls(pose, 24, 26, 28, reference_frame)
-    if left_leg is not None:
-        controls["left_leg"] = left_leg
-    if right_leg is not None:
-        controls["right_leg"] = right_leg
+        body_yaw, _, _ = _matrix_to_yxz(reference_matrix.T @ current_matrix)
+        leg_matrix = reference_matrix @ _rotation_y(body_yaw)
+    else:
+        leg_matrix = reference_matrix
+
+    for part, indices in (
+        ("left_leg", (23, 25, 27)),
+        ("right_leg", (24, 26, 28)),
+    ):
+        limb = _limb_controls(
+            pose, *indices, leg_matrix, 1.0,
+            previous_frames.get(part),
+        )
+        if limb is not None:
+            limb_controls, bone_matrix = limb
+            controls[part] = limb_controls
+            previous_frames[part] = bone_matrix
 
     return controls
+
+
+def calculate_pose_controls(
+    pose: dict[str, Any],
+    reference_pose: dict[str, Any] | None = None,
+) -> dict[str, dict[str, float]]:
+    """Convert one MediaPipe pose to full 3D Mine-imator human controls."""
+    reference_frame, face_flip = _reference_setup(reference_pose, pose)
+    return _controls_for_pose(pose, reference_frame, face_flip, {})
+
+
+def calculate_pose_sequence(
+    samples,
+    reference_pose: dict[str, Any] | None = None,
+) -> list[tuple[float, dict[str, dict[str, float]]]]:
+    """Convert a take in chronological order, preserving bone-frame continuity."""
+    samples = list(samples)
+    if not samples:
+        return []
+    if reference_pose is None:
+        reference_pose = next(
+            (
+                pose for _, pose in samples
+                if _torso_frame(pose) is not None
+            ),
+            samples[0][1],
+        )
+
+    reference_frame, face_flip = _reference_setup(reference_pose)
+    previous_frames: dict[str, np.ndarray] = {}
+    converted = []
+    for timestamp, pose in samples:
+        controls = _controls_for_pose(
+            pose, reference_frame, face_flip, previous_frames
+        )
+        converted.append((max(0.0, float(timestamp)), controls))
+    return converted
+
+

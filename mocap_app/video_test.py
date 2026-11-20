@@ -8,7 +8,7 @@ import cv2
 from PySide6.QtCore import QCoreApplication
 
 from .miobject import export_miobject
-from .retarget import calculate_pose_controls
+from .retarget import calculate_pose_sequence
 from .video import VideoWorker
 
 
@@ -92,14 +92,14 @@ def run_regression(video_path: Path, template_path: Path, output_path: Path) -> 
     reference_pose = next(
         (
             pose for _, pose in samples
-            if "body" in calculate_pose_controls(pose)
+            if calculate_pose_sequence([(0.0, pose)])
         ),
         samples[0][1],
     )
     pose_frames = []
     channel_values: dict[str, dict[str, list[float]]] = {}
-    for timestamp, pose in samples:
-        controls = calculate_pose_controls(pose, reference_pose=reference_pose)
+    sequence_controls = calculate_pose_sequence(samples, reference_pose=reference_pose)
+    for (timestamp, pose), (_, controls) in zip(samples, sequence_controls):
         pose_frames.append({
             "timestamp": round(float(timestamp), 6),
             "world": pose.get("world", []),
