@@ -577,6 +577,29 @@ def test_torso_frame_falls_back_to_hip_width_when_shoulders_are_degenerate():
     assert frame[2] == pytest.approx((0.0, 0.0, -1.0), abs=1e-6)
 
 
+def test_torso_frame_keeps_forward_axis_aligned_with_face_when_shoulders_are_mirrored():
+    pose = standing_pose()
+    # MediaPipe's left shoulder/hip lie on image-right for a person facing camera.
+    # Their anatomical right-minus-left width points toward the opposite side.
+    for left_index, right_index in ((11, 12), (23, 24)):
+        pose["world"][left_index], pose["world"][right_index] = (
+            pose["world"][right_index],
+            pose["world"][left_index],
+        )
+
+    frame = _torso_frame(pose)
+    face_direction = (
+        pose["world"][0][0] - (pose["world"][7][0] + pose["world"][8][0]) / 2.0,
+        pose["world"][0][1] - (pose["world"][7][1] + pose["world"][8][1]) / 2.0,
+        pose["world"][0][2] - (pose["world"][7][2] + pose["world"][8][2]) / 2.0,
+    )
+
+    assert frame is not None
+    assert sum(frame[2][index] * face_direction[index] for index in range(3)) > 0.0
+    assert frame[0] == pytest.approx((1.0, 0.0, 0.0), abs=1e-6)
+    assert frame[2] == pytest.approx((0.0, 0.0, -1.0), abs=1e-6)
+
+
 def test_torso_rotation_is_not_artificially_clipped_at_89_degrees():
     neutral = standing_pose()
     rotated = _rotate_pose_x(neutral, 100.0, (11, 12, 23, 24))

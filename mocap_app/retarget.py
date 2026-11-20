@@ -69,6 +69,8 @@ def _torso_frame(pose: dict[str, Any]):
     Shoulder width is preferred because it captures torso twist. If that axis
     becomes almost parallel to the torso's up axis, its projected width is
     unreliable; in that case the pelvis width is used as a geometric fallback.
+    The resulting forward axis is checked against the nose-to-ears direction
+    so front-facing footage cannot silently produce a backward torso frame.
     Degenerate torso height or width is rejected instead of producing a frame
     whose axes can jump dramatically from one video frame to the next.
     """
@@ -115,6 +117,19 @@ def _torso_frame(pose: dict[str, Any]):
     up = _unit(_cross(forward, right))
     if up is None:
         return None
+
+    # Pose landmark left/right labels can make the shoulder-width vector point
+    # opposite to the face direction (especially in front-facing footage).
+    # Keep the torso frame aligned with the character's front so yaw, arms and
+    # head are expressed in the same forward-facing coordinate system.
+    nose = _point(pose, 0)
+    left_ear = _point(pose, 7)
+    right_ear = _point(pose, 8)
+    if nose is not None and left_ear is not None and right_ear is not None:
+        face_direction = _subtract(nose, _midpoint(left_ear, right_ear))
+        if _dot(forward, face_direction) < 0.0:
+            right = tuple(-component for component in right)
+            forward = tuple(-component for component in forward)
     return right, up, forward
 
 def _relative_euler(reference_frame, current_frame) -> tuple[float, float, float]:
