@@ -280,11 +280,17 @@ def _bone_frame(
     start_index: int,
     joint_index: int,
     end_index: int,
-    x_direction: float,
-    fallback_right,
-    previous_frame=None,
+    reference_matrix,
 ):
-    """Build a full 3D bone frame and keep its bend-plane sign continuous."""
+    """Build a minimum-twist frame from the proximal bone direction.
+
+    A monocular shoulder-elbow-wrist triangle does not provide a reliable
+    measurement of axial humerus/forearm twist. Using its bend-plane normal as
+    the upper-arm frame can turn ordinary wrist gestures and depth noise into
+    repeated full rotations. The frame below uses only the captured upper-bone
+    direction and the smallest rotation from the parent frame's up axis.
+    Elbow/knee flexion is calculated independently as a hinge angle.
+    """
     start = _point(pose, start_index)
     joint = _point(pose, joint_index)
     end = _point(pose, end_index)
@@ -297,31 +303,41 @@ def _bone_frame(
     lower_length = float(np.linalg.norm(lower))
     if upper_length < _EPSILON or lower_length < _EPSILON:
         return None
-    local_y = upper / upper_length
 
-    bend_plane = np.cross(float(x_direction) * lower, local_y)
-    plane_size = float(np.linalg.norm(bend_plane))
-    if plane_size < 0.035:
-        preferred = previous_frame[:, 0] if previous_frame is not None else fallback_right
-        local_x = _project_axis(preferred, local_y)
-        x_length = float(np.linalg.norm(local_x))
-        if x_length < _EPSILON:
-            return None
-        local_x /= x_length
+    upper_direction = upper / upper_length
+    lower_direction = lower / lower_length
+    reference_up = np.asarray(reference_matrix[:, 1], dtype=float)
+    reference_up /= max(float(np.linalg.norm(reference_up)), _EPSILON)
+
+    # Rodrigues' minimum-angle rotation maps the parent up axis to the captured
+    # proximal-bone axis without introducing an unobserved twist around it.
+    cross = np.cross(reference_up, upper_direction)
+    cosine = max(-1.0, min(1.0, float(np.dot(reference_up, upper_direction))))
+    sine = float(np.linalg.norm(cross))
+    if sine < 1e-8:
+        if cosine >= 0.0:
+            swing = np.eye(3, dtype=float)
+        else:
+            # The 180-degree case has no unique swing axis. Use the parent's
+            # right axis consistently instead of taking a noisy wrist normal.
+            axis = np.asarray(reference_matrix[:, 0], dtype=float)
+            axis /= max(float(np.linalg.norm(axis)), _EPSILON)
+            swing = 2.0 * np.outer(axis, axis) - np.eye(3, dtype=float)
     else:
-        local_x = bend_plane / plane_size
+        skew = np.asarray(
+            (
+                (0.0, -cross[2], cross[1]),
+                (cross[2], 0.0, -cross[0]),
+                (-cross[1], cross[0], 0.0),
+            ),
+            dtype=float,
+        )
+        swing = np.eye(3, dtype=float) + skew + (
+            skew @ skew
+        ) / (1.0 + cosine)
 
-    if previous_frame is not None and float(np.dot(local_x, previous_frame[:, 0])) < 0.0:
-        local_x = -local_x
-
-    local_z = np.cross(local_x, local_y)
-    z_length = float(np.linalg.norm(local_z))
-    if z_length < _EPSILON:
-        return None
-    local_z /= z_length
-    local_x = np.cross(local_y, local_z)
-    local_x /= max(float(np.linalg.norm(local_x)), _EPSILON)
-    return np.column_stack((local_x, local_y, local_z)), local_y, lower / lower_length
+    bone_matrix = swing @ reference_matrix
+    return bone_matrix, upper_direction, lower_direction
 
 
 def _limb_controls(
@@ -330,19 +346,15 @@ def _limb_controls(
     joint_index,
     end_index,
     reference_matrix,
-    x_direction,
-    previous_frame=None,
     previous_angles=None,
 ):
-    """Retarget one limb with three local Euler axes plus native X bending."""
+    """Retarget one limb's upper-bone swing and independent hinge flexion."""
     bone = _bone_frame(
         pose,
         start_index,
         joint_index,
         end_index,
-        x_direction,
-        reference_matrix[:, 0],
-        previous_frame,
+        reference_matrix,
     )
     if bone is None:
         return None
@@ -361,6 +373,7 @@ def _limb_controls(
         "ROT_Z": angle_z,
         "BEND_ANGLE_X": max(0.0, min(150.0, bend)),
     }, bone_matrix, (angle_y, angle_x, angle_z)
+
 
 
 def _head_frame(pose, body_matrix, previous_frame=None):
@@ -461,14 +474,12 @@ def _controls_for_pose(
             ("right_arm", (12, 14, 16)),
         ):
             limb = _limb_controls(
-                pose, *indices, current_matrix, -1.0,
-                previous_frames.get(part),
+                pose, *indices, current_matrix,
                 previous_angles.get(part),
             )
             if limb is not None:
-                limb_controls, bone_matrix, angles = limb
+                limb_controls, _bone_matrix, angles = limb
                 controls[part] = limb_controls
-                previous_frames[part] = bone_matrix
                 previous_angles[part] = angles
 
         head = _head_controls(
@@ -493,14 +504,12 @@ def _controls_for_pose(
         ("right_leg", (24, 26, 28)),
     ):
         limb = _limb_controls(
-            pose, *indices, leg_matrix, 1.0,
-            previous_frames.get(part),
+            pose, *indices, leg_matrix,
             previous_angles.get(part),
         )
         if limb is not None:
-            limb_controls, bone_matrix, angles = limb
+            limb_controls, _bone_matrix, angles = limb
             controls[part] = limb_controls
-            previous_frames[part] = bone_matrix
             previous_angles[part] = angles
 
     return controls

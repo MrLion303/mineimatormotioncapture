@@ -778,3 +778,45 @@ def test_export_duration_matches_mineimator_24_fps_project(tmp_path):
     assert result["final_frame"] == 723
     assert result["final_frame"] / 24 == pytest.approx(30.125)
     assert abs(result["final_frame"] / 24 - source_duration) < 1 / 24
+
+
+
+def test_forearm_orbit_does_not_create_fictitious_upper_arm_twist():
+    import math
+
+    base = standing_pose()
+    shoulder = np.asarray(base["world"][11][:3], dtype=float)
+    elbow = np.asarray(base["world"][13][:3], dtype=float)
+    axis = shoulder - elbow
+    axis /= np.linalg.norm(axis)
+
+    # Keep the upper arm fixed and rotate a bent forearm around its own
+    # proximal axis. The wrist path must not become a full rotation of the
+    # upper arm in the exported controls.
+    lower = np.asarray((0.25, 0.25, 0.0), dtype=float)
+    samples = []
+    for step, angle_degrees in enumerate(range(0, 721, 30)):
+        angle = math.radians(angle_degrees)
+        rotated_lower = (
+            lower * math.cos(angle)
+            + np.cross(axis, lower) * math.sin(angle)
+            + axis * np.dot(axis, lower) * (1.0 - math.cos(angle))
+        )
+        pose = {
+            "world": [list(point) for point in base["world"]],
+            "image": [],
+        }
+        wrist = elbow + rotated_lower
+        pose["world"][15] = [*wrist.tolist(), 1.0, 1.0]
+        samples.append((step / 24.0, pose))
+
+    converted = calculate_pose_sequence(samples, reference_pose=samples[0][1])
+    rotations = [
+        controls["left_arm"]
+        for _, controls in converted
+        if "left_arm" in controls
+    ]
+    assert len(rotations) == len(samples)
+    for field in ("ROT_X", "ROT_Y", "ROT_Z", "BEND_ANGLE_X"):
+        values = [frame[field] for frame in rotations]
+        assert max(values) - min(values) < 0.1

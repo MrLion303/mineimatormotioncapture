@@ -9,7 +9,7 @@ Aplicación de escritorio para grabar los movimientos de una persona con una web
 - El torso se reconstruye como un marco 3D ortonormal usando hombros y caderas; el giro horizontal se exporta en el canal nativo `BEND_ANGLE_Z`, conforme al rig de referencia de Mine-imator.
 - Los brazos se expresan en el marco local actual del torso, evitando duplicar el giro del torso en los brazos.
 - La cabeza usa `ROT_X` y `ROT_Z`; el torso usa `BEND_ANGLE_X/Y/Z` con el yaw asignado a `BEND_ANGLE_Z`.
-- Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la flexión del codo y la rodilla se calcula por separado.
+- Brazos y piernas conservan sus canales nativos de orientación `ROT_X/Y/Z` y flexión `BEND_ANGLE_X`; la orientación usa el giro mínimo del hueso proximal y evita que el movimiento de la muñeca produzca vueltas axiales falsas.
 - Se reduce la respuesta de las piernas y se aplica una zona muerta pequeña para evitar que la vibración del tracking se convierta en pasos exagerados.
 - El suavizado combina mediana temporal y un filtro adaptativo tipo One Euro: amortigua saltos aislados y conserva movimientos rápidos.
 - El torso usa su primer marco 3D como referencia; brazos y piernas conservan su pose local desde el primer fotograma, incluso si el video comienza a mitad de un gesto. La cabeza se calibra por separado para compensar el offset anatómico de nariz y orejas.

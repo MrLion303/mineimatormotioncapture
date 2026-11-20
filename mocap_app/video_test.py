@@ -123,6 +123,26 @@ def run_regression(
         }
         for part, fields in channel_values.items()
     }
+
+    # A limb's hinge can flex, but the monocular pose landmarks do not provide
+    # observable axial twist. Reject runaway Euler turns instead of silently
+    # exporting them into a Mine-imator project.
+    limb_rotation_peaks = {}
+    for part in ("left_arm", "right_arm", "left_leg", "right_leg"):
+        fields = channel_values.get(part, {})
+        values = [
+            abs(value)
+            for channel in ("ROT_X", "ROT_Y", "ROT_Z")
+            for value in fields.get(channel, [])
+        ]
+        peak = max(values, default=0.0)
+        limb_rotation_peaks[part] = round(peak, 4)
+        if peak > 180.0:
+            raise RuntimeError(
+                f"El retargeting produjo un giro axial no fiable en {part}: "
+                f"{peak:.1f} grados. Se cancela la regresión para evitar "
+                "keyframes de vueltas artificiales."
+            )
     poses_path = output_path.with_suffix(".poses.json")
     poses_path.parent.mkdir(parents=True, exist_ok=True)
     poses_path.write_text(
@@ -140,6 +160,7 @@ def run_regression(
         "pose_diagnostics": poses_path.name,
         "first_frame_controls": pose_frames[0]["controls"],
         "raw_channel_ranges": channel_ranges,
+        "limb_rotation_peak_degrees": limb_rotation_peaks,
         "torso_yaw_channel": "BEND_ANGLE_Z",
         "project_fps": int(fps),
         "mineimator_playback_duration_seconds": (
