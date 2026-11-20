@@ -275,8 +275,8 @@ def test_torso_and_head_use_their_own_native_landmark_axes():
     moved["world"][7][1] += 0.04
     moved["world"][8][1] -= 0.04
 
-    original = calculate_pose_controls(neutral)
-    controls = calculate_pose_controls(moved)
+    original = calculate_pose_controls(neutral, reference_pose=neutral)
+    controls = calculate_pose_controls(moved, reference_pose=neutral)
     assert any(
         abs(controls["body"][field] - original["body"][field]) > 1.0
         for field in ("BEND_ANGLE_X", "BEND_ANGLE_Y", "BEND_ANGLE_Z")
