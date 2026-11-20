@@ -845,7 +845,9 @@ def test_root_translation_preserves_lateral_step_vertical_bounce_and_depth():
 
 def test_legs_are_retargeted_in_character_root_space_not_torso_yaw():
     neutral = standing_pose()
-    torso_turn = _rotate_pose_y(neutral, 42.0, (11, 12, 23, 24))
+    # Twist only the upper torso around the pelvis. The hip-to-knee and
+    # knee-to-ankle vectors stay fixed in character-root space.
+    torso_turn = _rotate_pose_y(neutral, 42.0, (11, 12))
 
     sequence = calculate_pose_sequence(
         [(0.0, neutral), (1.0, torso_turn)],
